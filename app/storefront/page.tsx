@@ -1,0 +1,55 @@
+"use client";
+
+import { useAppState } from "@/lib/store/AppState";
+import MessageList from "@/components/storefront/MessageList";
+import ChatInput from "@/components/storefront/ChatInput";
+import CartSidebar from "@/components/storefront/CartSidebar";
+
+const SUGGESTED_PROMPTS = [
+  "I need a phone case and a fast charger",
+  "Something under ₹1,500 for a rainy weekend read",
+  "Show me running shoes",
+];
+
+export default function StorefrontPage() {
+  const { storeMessages, sendShopperMessage } = useAppState();
+  const empty = storeMessages.length === 0;
+
+  return (
+    <div className="h-full flex">
+      <main className="flex-1 min-w-0 flex flex-col bg-bg">
+        <div className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
+          <div className="max-w-[720px] mx-auto flex flex-col gap-6">
+            {empty && (
+              <div className="pt-11 pb-2 flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <div className="w-[34px] h-[34px] rounded-[9px] bg-accent text-white flex items-center justify-center text-[15px] font-semibold">
+                    C
+                  </div>
+                  <h1 className="mt-2 text-[27px] font-semibold tracking-tight">What are you shopping for?</h1>
+                  <p className="m-0 text-[14.5px] text-ink-muted max-w-[46ch] leading-relaxed">
+                    Tell the shopping agent in plain words. It searches the marketplace, builds your cart, and hands you off to Razorpay to pay. Every action it takes is logged in the audit trail.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {SUGGESTED_PROMPTS.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => sendShopperMessage(p)}
+                      className="bg-white border border-border rounded-full px-3.5 py-2 text-[13.5px] text-ink hover:border-accent hover:text-accent transition-colors text-left"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <MessageList messages={storeMessages} />
+          </div>
+        </div>
+        <ChatInput onSend={sendShopperMessage} placeholder="Ask the shopping agent…" />
+      </main>
+      <CartSidebar />
+    </div>
+  );
+}

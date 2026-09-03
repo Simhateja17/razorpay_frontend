@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-muted: #f2f0eb;
+  --border: #e4e1da;
+  --border-soft: #eae7e0;
+  --ink: #1a1c1b;
+  --ink-muted: #6f6f6a;
+  --ink-faint: #8a8a84;
+  --accent: #0f5c4f;
+  --accent-hover: #0b473d;
+  --danger: #a3231d;
+  --danger-bg: #fffaf9;
+  --danger-border: #edcfcb;
+  --success-bg: #f2f8f5;
+  --success-border: #c6ded3;
+  --success-ink: #4a6b60;
+  --upsell-bg: #fdf3e7;
+  --upsell-border: #f0d9bc;
+  --upsell-ink: #8a4a12;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-border: var(--danger-border);
+  --color-success-bg: var(--success-bg);
+  --color-success-border: var(--success-border);
+  --color-success-ink: var(--success-ink);
+  --color-upsell-bg: var(--upsell-bg);
+  --color-upsell-border: var(--upsell-border);
+  --color-upsell-ink: var(--upsell-ink);
+  --font-sans: var(--font-instrument-sans);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise-in {
+  animation: riseIn 220ms ease both;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: -2px;
+  animation: blink 1s steps(1, end) infinite;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d8d4cb;
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
