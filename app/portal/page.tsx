@@ -31,7 +31,7 @@ export default function PortalPage() {
                     </div>
                     <h1 className="mt-2 text-[24px] font-semibold tracking-tight">How can I help run the store?</h1>
                     <p className="m-0 text-[14px] text-ink-muted max-w-[52ch] leading-relaxed">
-                      Ask about sales, inventory, or pricing. Anything I&apos;d change goes into the approval queue on the right — nothing applies until you approve it.
+                      Ask about sales, inventory, or pricing. Anything I&apos;d change goes into the approval queue on the right - nothing applies until you approve it.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-1">
