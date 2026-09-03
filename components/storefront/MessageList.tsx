@@ -1,9 +1,7 @@
 "use client";
 
-import { ChatMessage } from "@/lib/types";
-import ProductCardView from "./ProductCardView";
-import CheckoutCard from "./CheckoutCard";
-import CheckoutStageCard from "./CheckoutStageCard";
+import { ChatMessage, ToolTrace } from "@/lib/types";
+import AgentComponent from "./AgentComponent";
 
 export default function MessageList({ messages }: { messages: ChatMessage[] }) {
   return (
@@ -22,29 +20,75 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
                 C
               </div>
               <div className="flex-1 min-w-0 flex flex-col gap-2">
-                <div className="text-[14.5px] leading-relaxed text-ink">{m.text}</div>
+                {m.tools && m.tools.length > 0 && <ToolTrail tools={m.tools} />}
+                {m.text && (
+                  <div className="text-[14.5px] leading-relaxed text-ink whitespace-pre-wrap">
+                    {m.text}
+                  </div>
+                )}
+                {m.typing && !m.text && (
+                  <span className="text-[13px] text-ink-faint" aria-live="polite">
+                    Thinking…
+                  </span>
+                )}
                 {m.why && (
                   <div className="flex gap-2 items-start bg-white border border-border-soft rounded-lg px-2.5 py-2">
-                    <span className="font-mono text-[9.5px] text-ink-faint tracking-wide flex-none mt-0.5">WHY</span>
+                    <span className="font-mono text-[9.5px] text-ink-faint tracking-wide flex-none mt-0.5">
+                      WHY
+                    </span>
                     <span className="text-[12.5px] text-[#5d5d58] leading-relaxed">{m.why}</span>
+                  </div>
+                )}
+                {m.error && (
+                  <div className="bg-danger-bg border border-danger-border rounded-lg px-2.5 py-2 text-[12.5px] text-[#5d5d58]">
+                    {m.error}
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {m.products && m.products.length > 0 && (
-            <div className="grid gap-3 ml-9" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(196px, 1fr))" }}>
-              {m.products.map((p) => (
-                <ProductCardView key={p.id} product={p} />
-              ))}
-            </div>
-          )}
-
-          {m.checkout && <CheckoutCard msgId={m.id} checkout={m.checkout} status={m.orderStatus} />}
-          {m.stagedCheckout && <CheckoutStageCard stage={m.stagedCheckout} />}
+          {/* Components render in the order the agent emitted them, so the reading
+              order on screen matches the order it decided to show things in. */}
+          {m.components?.map((component, index) => (
+            <AgentComponent key={`${m.id}-${index}`} component={component} />
+          ))}
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * What the agent actually did this turn. A blocked call is shown, not hidden: a gate
+ * holding a call is the system working, and it is the most informative thing on the
+ * screen when the agent declines to do something.
+ */
+function ToolTrail({ tools }: { tools: ToolTrace[] }) {
+  const mark: Record<ToolTrace["status"], string> = {
+    running: "·",
+    ok: "✓",
+    error: "!",
+    blocked: "⊘",
+  };
+  const tone: Record<ToolTrace["status"], string> = {
+    running: "text-ink-faint",
+    ok: "text-ink-faint",
+    error: "text-danger",
+    blocked: "text-danger",
+  };
+
+  return (
+    <ul className="m-0 p-0 list-none flex flex-col gap-1">
+      {tools.map((tool) => (
+        <li key={tool.id} className="flex gap-1.5 items-baseline font-mono text-[10.5px]">
+          <span className={tone[tool.status]}>{mark[tool.status]}</span>
+          <span className="text-ink-faint">{tool.label ?? tool.tool}</span>
+          {tool.status === "blocked" && tool.reason && (
+            <span className="text-danger">held by {tool.reason}</span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -105,3 +105,22 @@ export function getProductImageUrl(product: { image_label: string; category: str
   const lock = hashSeed(product.image_label || product.category);
   return `https://loremflickr.com/${size}/${size}/${keyword}?lock=${lock}`;
 }
+
+/**
+ * The same idea for the normalized catalogue, which has no `image_label`: match the
+ * item type by name against the keyword table, and fall back to the category. The
+ * lock is derived from the matched keyword, so every brand and edition of one item
+ * type keeps showing the same photo.
+ */
+export function getVariantImageUrl(
+  item: { title: string; category?: string | null },
+  size = 400
+): string {
+  const haystack = item.title.toUpperCase();
+  const matched = Object.keys(ITEM_IMAGE_KEYWORDS).find((label) => haystack.includes(label));
+  const keyword =
+    (matched && ITEM_IMAGE_KEYWORDS[matched]) ??
+    (item.category ? CATEGORY_FALLBACK_KEYWORDS[item.category] : undefined) ??
+    "product";
+  return `https://loremflickr.com/${size}/${size}/${keyword}?lock=${hashSeed(keyword)}`;
+}

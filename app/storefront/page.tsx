@@ -4,16 +4,18 @@ import { useAppState } from "@/lib/store/AppState";
 import MessageList from "@/components/storefront/MessageList";
 import ChatInput from "@/components/storefront/ChatInput";
 import CartSidebar from "@/components/storefront/CartSidebar";
+import StagePanel from "@/components/storefront/StagePanel";
+import PaymentPanel from "@/components/storefront/PaymentPanel";
 import SignInGate from "@/components/shared/SignInGate";
 
 const SUGGESTED_PROMPTS = [
-  "I need a phone case and a fast charger",
-  "Something under ₹1,500 for a rainy weekend read",
-  "Show me running shoes",
+  "I need a laptop and a charger that can actually drive it",
+  "Compare the chargers you have under ₹3,000",
+  "What's in my cart?",
 ];
 
 export default function StorefrontPage() {
-  const { storeMessages, sendShopperMessage } = useAppState();
+  const { storeMessages, sendShopperMessage, turnActive, progress } = useAppState();
   const empty = storeMessages.length === 0;
 
   return (
@@ -47,9 +49,22 @@ export default function StorefrontPage() {
               </div>
             )}
             <MessageList messages={storeMessages} />
+            {/* The staged preview and the payment handoff live below the transcript
+                rather than inside a message: they are the current state of one
+                checkout, not something the agent said at a moment in time. */}
+            <StagePanel />
+            <PaymentPanel />
+            {progress && (
+              <span className="ml-9 text-[12px] text-ink-faint font-mono" aria-live="polite">
+                {progress}
+              </span>
+            )}
           </div>
         </div>
-        <ChatInput onSend={sendShopperMessage} placeholder="Ask the shopping agent…" />
+        <ChatInput
+          onSend={sendShopperMessage}
+          placeholder={turnActive ? "Working…" : "Ask the shopping agent…"}
+        />
       </main>
       <CartSidebar />
     </div>

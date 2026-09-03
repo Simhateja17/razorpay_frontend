@@ -1,13 +1,17 @@
 import {
+  AgentEvent,
+  ApiProduct,
   Approval,
   ApprovalStatus,
   AuditEntry,
   BusinessSnapshot,
   CartApi,
   ChatReply,
-  CheckoutResult,
-  OrderStatus,
+  ConfirmedCheckout,
+  OrderApi,
+  PaymentHandoff,
   Principal,
+  StagedCheckout,
 } from "@/lib/types";
 
 import { accessToken } from "@/lib/supabase";
@@ -51,24 +55,14 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// The backend streams `text_delta` events as Claude narrates, then one
-// `message` event carrying the complete reply (same shape regardless of
-// whether any deltas were read), then `done` (see api/main.py: streamed_message()).
-// We read the body incrementally so `onDelta` can render text as it's generated;
-// turns whose text is already fully known in code (checkout, add-to-cart) simply
-// emit no deltas before `message`, so `onDelta` just never fires for those.
-async function chat(
-  path: "/chat/storefront" | "/chat/portal",
-  conversationId: string,
-  message: string,
-  onDelta?: (delta: string) => void
-): Promise<ChatReply> {
+/** Open an SSE stream and yield each frame as it arrives. */
+async function* sseStream(path: string, body: unknown): AsyncGenerator<{ event: string; data: unknown }> {
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(await authHeaders()) },
-      body: JSON.stringify({ conversation_id: conversationId, message }),
+      body: JSON.stringify(body),
     });
   } catch {
     throw new ApiError(`Could not reach the Cartisan backend at ${BASE}. Is it running?`);
@@ -76,8 +70,8 @@ async function chat(
   if (!res.ok || !res.body) {
     let detail = res.statusText;
     try {
-      const body = await res.json();
-      detail = body.detail ?? detail;
+      const parsed = await res.json();
+      detail = parsed.detail ?? detail;
     } catch {
       /* ignore */
     }
@@ -87,73 +81,120 @@ async function chat(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let payload: ChatReply | null = null;
-
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
     let boundary: number;
+    // Frames are separated by a blank line; a `data:` payload is always one line.
     while ((boundary = buffer.indexOf("\n\n")) !== -1) {
       const block = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
       const eventMatch = block.match(/^event: (.+)$/m);
       const dataMatch = block.match(/^data: (.+)$/m);
       if (!eventMatch || !dataMatch) continue;
-      const data = JSON.parse(dataMatch[1]);
-      if (eventMatch[1] === "text_delta") onDelta?.(data.delta as string);
-      else if (eventMatch[1] === "message") payload = data as ChatReply;
+      try {
+        yield { event: eventMatch[1], data: JSON.parse(dataMatch[1]) };
+      } catch {
+        // A frame we cannot parse is skipped rather than failing the whole turn.
+      }
     }
   }
-  if (!payload) throw new ApiError("Unexpected response from chat endpoint.");
+}
+
+/**
+ * One storefront turn, as a stream of `commerce_common.streaming.AgentEvent`s.
+ *
+ * The caller renders the event types it knows and ignores the rest — that is the
+ * contract, and it is what lets the backend add an event type without breaking
+ * this client. There is no final "whole reply" message: the turn IS the events,
+ * and `turn_complete` closes it.
+ */
+async function* chatStorefront(
+  conversationId: string,
+  message: string
+): AsyncGenerator<AgentEvent> {
+  for await (const frame of sseStream("/chat/storefront", {
+    conversation_id: conversationId,
+    message,
+  })) {
+    if (frame.event === "done") return;
+    yield { type: frame.event, data: frame.data } as AgentEvent;
+  }
+}
+
+/** The portal still runs the pre-Phase-5 shape: deltas, then one `message`. */
+async function chatPortal(conversationId: string, message: string): Promise<ChatReply> {
+  let payload: ChatReply | null = null;
+  for await (const frame of sseStream("/chat/portal", {
+    conversation_id: conversationId,
+    message,
+  })) {
+    if (frame.event === "message") payload = frame.data as ChatReply;
+  }
+  if (!payload) throw new ApiError("Unexpected response from the portal chat endpoint.");
   return payload;
 }
 
 export const api = {
-  chatStorefront: (conversationId: string, message: string, onDelta?: (delta: string) => void) =>
-    chat("/chat/storefront", conversationId, message, onDelta),
-  chatPortal: (conversationId: string, message: string) => chat("/chat/portal", conversationId, message),
+  chatStorefront,
+  chatPortal,
 
   me: () => req<Principal>("/me"),
 
-  catalog: () => req<import("@/lib/types").ApiProduct[]>("/catalog"),
+  catalog: () => req<ApiProduct[]>("/catalog"),
 
-  // Cart calls name no owner. `expectedVersion` makes a mutation fail with 409
-  // rather than silently overwrite a cart that changed since it was read, and
-  // `idempotencyKey` makes a retried mutation apply exactly once.
+  // Cart calls name no owner and no product — only a variant, which is the id the
+  // cart, the stage and the order all share. `expectedVersion` makes a mutation
+  // fail with 409 rather than silently overwrite a cart that changed since it was
+  // read, and `idempotencyKey` makes a retried mutation apply exactly once.
   cartRead: () => req<CartApi>("/cart"),
-  cartAdd: (productId: string, quantity: number, reasoning: string, expectedVersion?: number) =>
+  cartAdd: (variantId: string, quantity: number, reasoning: string, expectedVersion?: number) =>
     req<CartApi>("/cart/items", {
       method: "POST",
       body: JSON.stringify({
-        product_id: productId, quantity, reasoning,
+        variant_id: variantId, quantity, reasoning,
         expected_version: expectedVersion ?? null,
         idempotency_key: crypto.randomUUID(),
       }),
     }),
-  cartUpdate: (productId: string, quantity: number, reasoning: string, expectedVersion?: number) =>
+  cartUpdate: (variantId: string, quantity: number, reasoning: string, expectedVersion?: number) =>
     req<CartApi>("/cart/items", {
       method: "PATCH",
       body: JSON.stringify({
-        product_id: productId, quantity, reasoning,
+        variant_id: variantId, quantity, reasoning,
         expected_version: expectedVersion ?? null,
         idempotency_key: crypto.randomUUID(),
       }),
     }),
-  cartRemove: (productId: string) =>
-    req<CartApi>(`/cart/items/${encodeURIComponent(productId)}`, { method: "DELETE" }),
+  cartRemove: (variantId: string) =>
+    req<CartApi>(`/cart/items/${encodeURIComponent(variantId)}`, { method: "DELETE" }),
 
-  checkout: (reasoning: string, expectedVersion?: number) =>
-    req<CheckoutResult>("/checkout", {
+  // Checkout is three calls, because they have three different authorities behind
+  // them: staging previews and holds nothing, confirming is the customer's act and
+  // the only thing that reserves stock, and the payment link is the host's to
+  // request. The agent can reach the first and none of the rest (ADR 0005).
+  stageCheckout: (fulfillmentOption = "standard", note?: string) =>
+    req<StagedCheckout>("/checkout/stage", {
       method: "POST",
-      body: JSON.stringify({
-        reasoning,
-        expected_version: expectedVersion ?? null,
-        idempotency_key: crypto.randomUUID(),
-      }),
+      body: JSON.stringify({ fulfillment_option: fulfillmentOption, note: note ?? null }),
+    }),
+  confirmCheckout: (stageId: string) =>
+    req<ConfirmedCheckout>("/checkout/confirm", {
+      method: "POST",
+      body: JSON.stringify({ stage_id: stageId, idempotency_key: crypto.randomUUID() }),
     }),
 
-  orderStatus: (orderId: string) => req<OrderStatus>(`/orders/${encodeURIComponent(orderId)}`),
+  orders: () => req<OrderApi[]>("/orders"),
+  orderStatus: (orderId: string) => req<OrderApi>(`/orders/${encodeURIComponent(orderId)}`),
+  // A retry is a new attempt on the SAME order, never a second order.
+  retryPayment: (orderId: string) =>
+    req<PaymentHandoff>(`/orders/${encodeURIComponent(orderId)}/payment`, { method: "POST" }),
+  // Coming back from Razorpay proves the customer returned, and nothing more: it
+  // moves the order to `payment_verification_pending` and waits for a verified
+  // event. Never render this as paid (ADR 0013).
+  paymentRedirectReturned: (orderId: string) =>
+    req<OrderApi>(`/orders/${encodeURIComponent(orderId)}/redirect`, { method: "POST" }),
 
   portalSnapshot: (sessionId: string) => req<BusinessSnapshot>(`/portal/snapshot?session_id=${encodeURIComponent(sessionId)}`),
   approvals: () => req<Approval[]>("/portal/approvals"),
