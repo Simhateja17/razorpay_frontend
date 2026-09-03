@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAppState } from "@/lib/store/AppState";
 
 const TABS = [
   { href: "/storefront", label: "Storefront" },
@@ -11,6 +12,7 @@ const TABS = [
 
 export default function HeaderNav() {
   const pathname = usePathname();
+  const { session, signOut } = useAppState();
 
   return (
     <header className="flex-none flex items-center gap-5 px-5 h-14 bg-surface border-b border-border">
@@ -35,9 +37,17 @@ export default function HeaderNav() {
         })}
       </nav>
       <div className="ml-auto flex items-center gap-3">
+        {session?.user.email && (
+          <span className="flex items-center gap-2 text-[12.5px] text-ink-muted">
+            {session.user.email}
+            <button onClick={signOut} className="text-ink-faint hover:text-ink underline underline-offset-2">
+              Sign out
+            </button>
+          </span>
+        )}
         <span className="inline-flex items-center gap-1.5 font-mono text-[10.5px] text-ink-muted bg-surface-muted border border-border px-2 py-1 rounded-md">
           <span className="w-1.5 h-1.5 rounded-full bg-accent" />
-          FIXTURE DATA · TEST MODE
+          SUPABASE DATA · TEST MODE
         </span>
       </div>
     </header>

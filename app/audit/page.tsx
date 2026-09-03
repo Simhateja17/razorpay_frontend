@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAppState } from "@/lib/store/AppState";
 import { AgentKind } from "@/lib/types";
 
@@ -13,9 +13,13 @@ const OUTCOME_STYLE: Record<string, string> = {
 };
 
 export default function AuditPage() {
-  const { audit } = useAppState();
+  const { audit, refreshAudit } = useAppState();
   const [agentFilter, setAgentFilter] = useState<AgentKind | "all">("all");
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    void refreshAudit();
+  }, [refreshAudit]);
 
   const rows = useMemo(() => {
     // audit already arrives newest-first (backend orders by timestamp DESC).
@@ -55,6 +59,7 @@ export default function AuditPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Filter by action or reasoning…"
+          aria-label="Filter by action or reasoning"
           className="flex-1 min-w-[200px] max-w-[320px] bg-white border border-border rounded-lg px-3 py-1.5 text-[12.5px] outline-none focus:border-accent"
         />
         <span className="font-mono text-[11px] text-ink-faint ml-auto">{rows.length} of {audit.length} entries</span>

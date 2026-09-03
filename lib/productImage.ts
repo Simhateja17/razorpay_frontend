@@ -1,0 +1,107 @@
+// Cartisan's 1,536 SKUs are procedurally generated (brand x item x edition), so there is
+// no real product photography to link to. Each of the 64 underlying item types gets a
+// deterministic stock photo keyword — backend/scripts/seed_catalog.py sets image_label to
+// `item.upper()[:24]`, which this map is keyed on.
+const ITEM_IMAGE_KEYWORDS: Record<string, string> = {
+  "WIRELESS EARBUDS": "earbuds",
+  "FAST CHARGER": "usb-charger",
+  "POWER BANK": "powerbank",
+  "SMART WATCH": "smartwatch",
+  "BLUETOOTH SPEAKER": "bluetooth-speaker",
+  "USB-C CABLE": "usb-cable",
+  "MECHANICAL KEYBOARD": "mechanical-keyboard",
+  "WIRELESS MOUSE": "computer-mouse",
+
+  "COFFEE MAKER": "coffee-maker",
+  "CAST-IRON PAN": "cast-iron-pan",
+  "STORAGE SET": "food-containers",
+  "MIXER GRINDER": "blender",
+  "ELECTRIC KETTLE": "electric-kettle",
+  "TABLE LAMP": "table-lamp",
+  "BEDSHEET SET": "bedsheet",
+  "WATER BOTTLE": "water-bottle",
+
+  "RUNNING SHOES": "running-shoes",
+  "COTTON T-SHIRT": "tshirt",
+  "DENIM JACKET": "denim-jacket",
+  "CASUAL SHIRT": "mens-shirt",
+  "TRAVEL BACKPACK": "backpack",
+  SUNGLASSES: "sunglasses",
+  "ANALOG WATCH": "wristwatch",
+  "CUSHION SOCKS": "socks",
+
+  "DOT-GRID JOURNAL": "notebook",
+  "READING LIGHT": "book-light",
+  "PENCIL SET": "pencils",
+  "GEL PEN SET": "pens",
+  "DESK ORGANISER": "desk-organizer",
+  "SKETCH BOOK": "sketchbook",
+  "EXAM PLANNER": "planner",
+  "CANVAS POUCH": "pouch",
+
+  "FACE WASH": "face-wash",
+  MOISTURISER: "moisturizer",
+  "SUNSCREEN SPF 50": "sunscreen",
+  SHAMPOO: "shampoo",
+  "BODY LOTION": "lotion",
+  "HAIR DRYER": "hair-dryer",
+  TRIMMER: "trimmer",
+  "BATH TOWEL": "towel",
+
+  "YOGA MAT": "yoga-mat",
+  "RESISTANCE BANDS": "resistance-bands",
+  "DUMBBELL SET": "dumbbells",
+  "CRICKET BAT": "cricket-bat",
+  "BADMINTON RACQUET": "badminton-racket",
+  FOOTBALL: "soccer-ball",
+  "GYM BAG": "gym-bag",
+  "SKIPPING ROPE": "jump-rope",
+
+  "BASMATI RICE 5KG": "rice",
+  "COLD-PRESSED OIL 1L": "cooking-oil",
+  "MIXED NUTS 500G": "mixed-nuts",
+  "GREEN TEA 100 BAGS": "green-tea",
+  "FILTER COFFEE 500G": "coffee-beans",
+  "PEANUT BUTTER 1KG": "peanut-butter",
+  "SPICE BOX": "spices",
+  "DARK CHOCOLATE": "chocolate",
+
+  "BUILDING BLOCKS": "building-blocks",
+  "STRATEGY BOARD GAME": "board-game",
+  "REMOTE CONTROL CAR": "rc-car",
+  "ART KIT": "art-supplies",
+  "JIGSAW PUZZLE": "jigsaw-puzzle",
+  "SCIENCE KIT": "science-kit",
+  "PLUSH TOY": "teddy-bear",
+  "CHESS SET": "chess",
+};
+
+const CATEGORY_FALLBACK_KEYWORDS: Record<string, string> = {
+  Electronics: "electronics",
+  "Home & Kitchen": "kitchenware",
+  Fashion: "apparel",
+  "Books & Stationery": "stationery",
+  "Beauty & Personal Care": "cosmetics",
+  "Sports & Fitness": "sports-equipment",
+  "Grocery & Gourmet": "groceries",
+  "Toys & Games": "toys",
+};
+
+function hashSeed(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Deterministic stock-photo URL for a product: same item type (image_label) always
+ * resolves to the same photo, shared across its brand/edition variants (24 SKUs each).
+ */
+export function getProductImageUrl(product: { image_label: string; category: string }, size = 400): string {
+  const keyword =
+    ITEM_IMAGE_KEYWORDS[product.image_label] ?? CATEGORY_FALLBACK_KEYWORDS[product.category] ?? "product";
+  const lock = hashSeed(product.image_label || product.category);
+  return `https://loremflickr.com/${size}/${size}/${keyword}?lock=${lock}`;
+}

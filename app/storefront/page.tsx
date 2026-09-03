@@ -4,6 +4,7 @@ import { useAppState } from "@/lib/store/AppState";
 import MessageList from "@/components/storefront/MessageList";
 import ChatInput from "@/components/storefront/ChatInput";
 import CartSidebar from "@/components/storefront/CartSidebar";
+import SignInGate from "@/components/shared/SignInGate";
 
 const SUGGESTED_PROMPTS = [
   "I need a phone case and a fast charger",
@@ -16,6 +17,7 @@ export default function StorefrontPage() {
   const empty = storeMessages.length === 0;
 
   return (
+    <SignInGate>
     <div className="h-full flex">
       <main className="flex-1 min-w-0 flex flex-col bg-bg">
         <div className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
@@ -51,5 +53,6 @@ export default function StorefrontPage() {
       </main>
       <CartSidebar />
     </div>
+    </SignInGate>
   );
 }

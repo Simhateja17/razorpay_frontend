@@ -12,8 +12,13 @@ import {
 } from "@/lib/types";
 import { api, ApiError } from "@/lib/api";
 import { uid } from "@/lib/format";
+import { supabase, supabaseConfigured } from "@/lib/supabase";
+import type { Session } from "@supabase/supabase-js";
 
-function sessionId(key: string): string {
+// A conversation id groups a chat thread for narration and audit only. It carries
+// no authority: the cart, orders, and checkout all belong to the signed-in
+// customer, so the same shopper sees one cart across every conversation and tab.
+function conversationId(key: string): string {
   if (typeof window === "undefined") return "server";
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
@@ -22,10 +27,21 @@ function sessionId(key: string): string {
   return fresh;
 }
 
-const EMPTY_CART: CartApi = { lines: [], total: 0, currency: "INR" };
+function errorMessage(error: unknown): string {
+  return error instanceof ApiError ? error.message : "Something went wrong talking to the backend.";
+}
+
+const EMPTY_CART: CartApi = { cart_id: "", customer_id: "", state_version: 0, lines: [], total: 0, currency: "INR" };
 
 interface AppState {
   backendError: string | null;
+
+  // identity
+  session: Session | null;
+  authReady: boolean;
+  authConfigured: boolean;
+  signIn: (email: string, password: string) => Promise<string | null>;
+  signOut: () => Promise<void>;
 
   // storefront
   storeMessages: ChatMessage[];
@@ -51,9 +67,12 @@ interface AppState {
 const AppStateContext = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [shopperId, setShopperId] = useState("server");
-  const [merchantId, setMerchantId] = useState("server");
+  const [shopperId] = useState(() => conversationId("cartisan_shopper"));
+  const [merchantId] = useState(() => conversationId("cartisan_merchant"));
   const [backendError, setBackendError] = useState<string | null>(null);
+
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(!supabaseConfigured);
 
   const [storeMessages, setStoreMessages] = useState<ChatMessage[]>([]);
   const [cart, setCart] = useState<CartApi>(EMPTY_CART);
@@ -64,10 +83,29 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const [audit, setAudit] = useState<AuditEntry[]>([]);
 
+
   useEffect(() => {
-    setShopperId(sessionId("cartisan_shopper"));
-    setMerchantId(sessionId("cartisan_merchant"));
+    if (!supabase) return;
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    return () => sub.subscription.unsubscribe();
   }, []);
+
+  const signIn = useCallback(async (email: string, password: string): Promise<string | null> => {
+    if (!supabase) return "Supabase Auth is not configured in this build.";
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return error?.message ?? null;
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await supabase?.auth.signOut();
+    setCart(EMPTY_CART);
+    setStoreMessages([]);
+  }, []);
+
 
   const guarded = useCallback(async <T,>(fn: () => Promise<T>): Promise<T | undefined> => {
     try {
@@ -75,7 +113,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setBackendError(null);
       return result;
     } catch (e) {
-      setBackendError(e instanceof ApiError ? e.message : "Something went wrong talking to the backend.");
+      setBackendError(errorMessage(e));
       return undefined;
     }
   }, []);
@@ -88,72 +126,151 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [guarded]);
 
   const refreshCart = useCallback(async () => {
-    if (shopperId === "server") return;
-    await guarded(async () => setCart(await api.cartRead(shopperId)));
-  }, [shopperId, guarded]);
+    if (!session) return;
+    await guarded(async () => setCart(await api.cartRead()));
+  }, [session, guarded]);
 
-  const refreshApprovals = useCallback(async () => {
-    await guarded(async () => setApprovals(await api.approvals()));
-  }, [guarded]);
+  // The cart is re-read whenever the principal changes, so signing in or out
+  // never leaves another shopper's cart on screen.
+  // Signing out clears the cart explicitly, so this effect only ever loads a cart
+  // for a present principal — it never has to blank one out mid-render.
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    api.cartRead()
+      .then((next) => {
+        if (!active) return;
+        setCart(next);
+        setBackendError(null);
+      })
+      .catch((error) => {
+        if (active) setBackendError(errorMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [session]);
 
   useEffect(() => {
-    if (shopperId === "server") return;
-    refreshCart();
-  }, [shopperId, refreshCart]);
-
-  useEffect(() => {
-    refreshApprovals();
-  }, [refreshApprovals]);
+    let active = true;
+    api.approvals()
+      .then((next) => {
+        if (!active) return;
+        setApprovals(next);
+        setBackendError(null);
+      })
+      .catch((error) => {
+        if (active) setBackendError(errorMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (merchantId === "server") return;
-    guarded(async () => setSnapshot(await api.portalSnapshot(merchantId)));
-  }, [merchantId, guarded]);
+    let active = true;
+    api.portalSnapshot(merchantId)
+      .then((next) => {
+        if (!active) return;
+        setSnapshot(next);
+        setBackendError(null);
+      })
+      .catch((error) => {
+        if (active) setBackendError(errorMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [merchantId]);
 
   useEffect(() => {
-    refreshAudit();
-  }, [refreshAudit]);
+    let active = true;
+    api.audit()
+      .then((next) => {
+        if (!active) return;
+        setAudit(next);
+        setBackendError(null);
+      })
+      .catch((error) => {
+        if (active) setBackendError(errorMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const sendShopperMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || shopperId === "server") return;
+      if (!trimmed || !session) return;
       setStoreMessages((s) => [...s, { id: uid("m"), role: "user", text: trimmed }]);
-      const reply = await guarded(() => api.chatStorefront(shopperId, trimmed));
+
+      // Claude's narration streams in token-by-token; give it a placeholder bubble
+      // that grows live, then swap in the authoritative final message (with
+      // products/cart/etc., which the backend only knows once narration finishes).
+      const streamId = uid("m");
+      let streaming = false;
+      const reply = await guarded(() =>
+        api.chatStorefront(shopperId, trimmed, (delta) => {
+          setStoreMessages((s) => {
+            if (!streaming) {
+              streaming = true;
+              return [...s, { id: streamId, role: "agent", text: delta }];
+            }
+            return s.map((m) => (m.id === streamId ? { ...m, text: m.text + delta } : m));
+          });
+        })
+      );
       if (reply) {
-        setStoreMessages((s) => [...s, { id: reply.id, role: "agent", text: reply.text, why: reply.why, products: reply.products }]);
+        const finalMessage: ChatMessage = {
+          id: reply.id,
+          role: "agent",
+          text: reply.text,
+          why: reply.why,
+          products: reply.products,
+          checkout: reply.checkout,
+          stagedCheckout: reply.stagedCheckout,
+          orderStatus: reply.orderStatus,
+        };
+        setStoreMessages((s) => (streaming ? s.map((m) => (m.id === streamId ? finalMessage : m)) : [...s, finalMessage]));
+        if (reply.cart) setCart(reply.cart);
+        else await refreshCart();
       }
+      await refreshAudit();
     },
-    [shopperId, guarded]
+    [shopperId, session, guarded, refreshCart, refreshAudit]
   );
 
   const addToCart = useCallback(
     async (product: ApiProduct) => {
-      if (shopperId === "server") return;
-      const updated = await guarded(() => api.cartAdd(shopperId, product.id, 1, `Customer added "${product.name}" from search results`));
+      if (!session) return;
+      const updated = await guarded(() =>
+        api.cartAdd(product.id, 1, `Customer added "${product.name}" from search results`, cart.state_version)
+      );
       if (updated) setCart(updated);
       refreshAudit();
     },
-    [shopperId, guarded, refreshAudit]
+    [session, cart.state_version, guarded, refreshAudit]
   );
 
   const removeFromCart = useCallback(
     async (productId: string) => {
-      if (shopperId === "server") return;
-      const updated = await guarded(() => api.cartRemove(shopperId, productId));
+      if (!session) return;
+      const updated = await guarded(() => api.cartRemove(productId));
       if (updated) setCart(updated);
       refreshAudit();
     },
-    [shopperId, guarded, refreshAudit]
+    [session, guarded, refreshAudit]
   );
 
   const beginCheckout = useCallback(async () => {
-    if (shopperId === "server") return;
+    if (!session) return;
     if (cart.lines.length === 0) {
       setStoreMessages((s) => [...s, { id: uid("m"), role: "agent", text: "Your cart is empty — add something first and I'll take you to checkout." }]);
       return;
     }
-    const result = await guarded(() => api.checkout(shopperId, "Customer requested checkout"));
+    const result = await guarded(() => api.checkout("Customer requested checkout", cart.state_version));
     if (result) {
       setStoreMessages((s) => [
         ...s,
@@ -169,18 +286,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setCart(EMPTY_CART);
     }
     refreshAudit();
-  }, [shopperId, cart.lines.length, guarded, refreshAudit]);
+  }, [session, cart.lines.length, cart.state_version, guarded, refreshAudit]);
 
   const checkOrderStatus = useCallback(
     async (msgId: string, orderId: string) => {
-      if (shopperId === "server") return;
-      const order = await guarded(() => api.orderStatus(shopperId, orderId));
+      if (!session) return;
+      const order = await guarded(() => api.orderStatus(orderId));
       if (order) {
         setStoreMessages((s) => s.map((m) => (m.id === msgId ? { ...m, orderStatus: order.status } : m)));
       }
       refreshAudit();
     },
-    [shopperId, guarded, refreshAudit]
+    [session, guarded, refreshAudit]
   );
 
   const sendMerchantMessage = useCallback(
@@ -211,6 +328,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const value: AppState = {
     backendError,
+    session,
+    authReady,
+    authConfigured: supabaseConfigured,
+    signIn,
+    signOut,
     storeMessages,
     cart,
     sendShopperMessage,

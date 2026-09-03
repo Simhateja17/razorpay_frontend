@@ -3,6 +3,7 @@
 import { ChatMessage } from "@/lib/types";
 import ProductCardView from "./ProductCardView";
 import CheckoutCard from "./CheckoutCard";
+import CheckoutStageCard from "./CheckoutStageCard";
 
 export default function MessageList({ messages }: { messages: ChatMessage[] }) {
   return (
@@ -41,6 +42,7 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
           )}
 
           {m.checkout && <CheckoutCard msgId={m.id} checkout={m.checkout} status={m.orderStatus} />}
+          {m.stagedCheckout && <CheckoutStageCard stage={m.stagedCheckout} />}
         </div>
       ))}
     </div>

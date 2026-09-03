@@ -1,30 +1,50 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { ApiProduct } from "@/lib/types";
 import { useAppState } from "@/lib/store/AppState";
+import { getProductImageUrl } from "@/lib/productImage";
 
 export default function ProductCardView({ product }: { product: ApiProduct }) {
   const { addToCart } = useAppState();
   const hasVariants = !!product.variants && product.variants.length > 0;
   const [variantId, setVariantId] = useState(hasVariants ? product.variants![0].id : undefined);
+  const [imageFailed, setImageFailed] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const selected = hasVariants ? product.variants!.find((v) => v.id === variantId) : product;
   const purchasable = hasVariants ? selected : product;
   const outOfStock = purchasable ? !purchasable.in_stock : true;
 
-  const handleAdd = () => {
-    if (purchasable) addToCart(purchasable);
+  const handleAdd = async () => {
+    if (!purchasable || adding) return;
+    setAdding(true);
+    await addToCart(purchasable);
+    setAdding(false);
   };
 
   return (
     <div className="flex flex-col gap-2 bg-white border border-border-soft rounded-xl p-3">
       <div
-        className="h-[104px] rounded-md bg-surface-muted border border-border-soft flex items-center justify-center text-ink-faint font-mono text-[10px] tracking-wide"
+        className="relative h-[104px] rounded-md bg-surface-muted border border-border-soft overflow-hidden flex items-center justify-center text-ink-faint font-mono text-[10px] tracking-wide"
         role="img"
         aria-label={product.name}
       >
-        {product.image_label}
+        {imageFailed ? (
+          product.image_label
+        ) : (
+          <Image
+            src={getProductImageUrl(product)}
+            alt={product.name}
+            fill
+            sizes="(max-width: 768px) 100vw, 196px"
+            unoptimized
+            className="object-cover"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+          />
+        )}
       </div>
       <div className="flex flex-col gap-0.5">
         <span className="text-[13.5px] font-medium leading-tight">{product.name}</span>
@@ -55,9 +75,11 @@ export default function ProductCardView({ product }: { product: ApiProduct }) {
       ) : (
         <button
           onClick={handleAdd}
-          className="mt-1 w-full bg-ink text-bg text-[13px] font-medium rounded-lg py-2 hover:opacity-90 transition-opacity"
+          disabled={adding}
+          aria-busy={adding}
+          className="mt-1 w-full bg-ink text-bg text-[13px] font-medium rounded-lg py-2 hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-wait"
         >
-          Add to cart
+          {adding ? "Adding…" : "Add to cart"}
         </button>
       )}
     </div>

@@ -25,6 +25,10 @@ export interface ChatReply {
   text: string;
   why?: string;
   products?: ApiProduct[];
+  checkout?: CheckoutResult;
+  stagedCheckout?: CheckoutStage;
+  orderStatus?: string;
+  cart?: CartApi;
 }
 
 export interface CartLineApi {
@@ -35,11 +39,26 @@ export interface CartLineApi {
   amount: number;
 }
 
+export interface Principal {
+  id: string;
+  email: string;
+  role: "customer" | "merchant_operator";
+  display_name: string | null;
+}
+
 export interface CartApi {
+  // The cart is owned by the authenticated customer, not by a conversation.
+  cart_id: string;
+  customer_id: string;
+  // Bumped by every mutation; pass it back as `expected_version` to make a
+  // concurrent change a visible 409 rather than a lost update.
+  state_version: number;
   lines: CartLineApi[];
   total: number;
   currency: string;
 }
+
+export type CheckoutStage = CartApi;
 
 export interface CheckoutResult {
   order_id: string;
@@ -52,7 +71,7 @@ export interface CheckoutResult {
 
 export interface OrderStatus {
   id: string;
-  session_id: string;
+  customer_id: string;
   status: string; // "created" | "paid" | "failed" | "cancelled" | "expired" ...
   total: number;
   payment_link_id: string;
@@ -109,6 +128,7 @@ export interface ChatMessage {
   why?: string;
   products?: ApiProduct[];
   checkout?: CheckoutResult;
+  stagedCheckout?: CheckoutStage;
   orderStatus?: string;
   error?: string;
 }
