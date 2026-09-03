@@ -5,7 +5,7 @@ import { AppStateProvider } from "@/lib/store/AppState";
 import HeaderNav from "@/components/shared/HeaderNav";
 import BackendErrorBanner from "@/components/shared/BackendErrorBanner";
 
-const instrumentSans = Instrument_Sans({
+const instrumentSans = Instrument_Sans({ //test
   variable: "--font-instrument-sans",
   subsets: ["latin"],
   weight: ["400", "500", "600"],
