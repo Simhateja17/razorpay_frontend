@@ -16,6 +16,26 @@ const SUGGESTED_PROMPTS = [
   "What's in my cart?",
 ];
 
+// One example per thing the shopping agent can actually do — search, compare, cart,
+// preferences, orders, policies, shipping, checkout — cycled in the input as a live
+// demonstration of scope, not just a static hint.
+const CAPABILITY_EXAMPLES = [
+  "Find me a laptop under ₹60,000",
+  "Compare the chargers you have under ₹3,000",
+  "Tell me more about the Noise Buds",
+  "Add 2 of the wireless mouse to my cart",
+  "What's in my cart?",
+  "Remove the charger from my cart",
+  "Remember I prefer wired earphones over wireless",
+  "Where's my last order?",
+  "Show my order history",
+  "What's your return policy?",
+  "How fast can this ship to Mumbai?",
+  "Help me pick a laptop for video editing",
+  "Checkout with my saved card",
+  "What can you help me with?",
+];
+
 export default function StorefrontPage() {
   const {
     storeMessages,
@@ -87,6 +107,8 @@ export default function StorefrontPage() {
         <ChatInput
           onSend={sendShopperMessage}
           placeholder={turnActive ? "Working…" : "Ask the shopping agent…"}
+          examples={CAPABILITY_EXAMPLES}
+          busy={turnActive}
         />
       </main>
       <CartSidebar />

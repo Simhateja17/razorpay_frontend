@@ -18,6 +18,28 @@ const SUGGESTED_PROMPTS = [
   "How is the Monsoon campaign doing?",
 ];
 
+// One example per thing the merchant agent can actually do — reading the snapshot,
+// metrics, campaigns, listings, inventory, and order health, and staging (never
+// applying) a price, restock, promotion, or campaign change — cycled in the input
+// as a live demonstration of scope.
+const CAPABILITY_EXAMPLES = [
+  "How are sales looking this week?",
+  "What's our revenue by category this month?",
+  "How is the Monsoon campaign doing?",
+  "Show me our top-selling audio listings",
+  "Show me the listing for the Noise Buds",
+  "Anything I should restock?",
+  "Any order issues I should know about?",
+  "What's the pricing headroom on this listing?",
+  "What changes are pending approval?",
+  "Fix the title and description on this listing",
+  "Drop the price on the wireless mouse to ₹799",
+  "Restock the charger by 50 units",
+  "Run a 15% off promotion on Personal Audio this weekend",
+  "Start a campaign for the new Smart Home listings",
+  "What can you help me with?",
+];
+
 export default function PortalPage() {
   const {
     portalMessages,
@@ -78,7 +100,12 @@ export default function PortalPage() {
               <MessageList messages={portalMessages} renderComponent={MerchantComponent} />
             </div>
           </div>
-          <ChatInput onSend={sendMerchantMessage} placeholder="Ask about sales, inventory, pricing…" />
+          <ChatInput
+            onSend={sendMerchantMessage}
+            placeholder="Ask about sales, inventory, pricing…"
+            examples={CAPABILITY_EXAMPLES}
+            busy={portalTurnActive}
+          />
         </main>
         <ApprovalQueue />
       </div>

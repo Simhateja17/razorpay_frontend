@@ -1,15 +1,82 @@
 "use client";
 
-import { useState, KeyboardEvent } from "react";
+import { useEffect, useRef, useState, KeyboardEvent } from "react";
+
+const TYPE_MS = 32;
+const ERASE_MS = 16;
+const HOLD_MS = 1500;
+const GAP_MS = 400;
+
+/**
+ * Types each example out letter by letter, holds it, erases it, and moves to the
+ * next — cycling for as long as `enabled` (the field is idle and empty). Runs on
+ * the native `placeholder` string itself rather than an overlay, so it always
+ * inherits the input's real `::placeholder` styling and never fights focus/caret
+ * behavior.
+ */
+function useTypewriterPlaceholder(examples: string[], enabled: boolean) {
+  const [text, setText] = useState("");
+  const examplesRef = useRef(examples);
+  examplesRef.current = examples;
+
+  useEffect(() => {
+    if (!enabled || examplesRef.current.length === 0) {
+      setText("");
+      return;
+    }
+    let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout>;
+    let exampleIndex = 0;
+
+    const typeNext = (charIndex: number) => {
+      if (cancelled) return;
+      const current = examplesRef.current[exampleIndex % examplesRef.current.length];
+      setText(current.slice(0, charIndex));
+      if (charIndex < current.length) {
+        timeout = setTimeout(() => typeNext(charIndex + 1), TYPE_MS);
+      } else {
+        timeout = setTimeout(() => eraseNext(current.length), HOLD_MS);
+      }
+    };
+
+    const eraseNext = (charIndex: number) => {
+      if (cancelled) return;
+      const current = examplesRef.current[exampleIndex % examplesRef.current.length];
+      setText(current.slice(0, charIndex));
+      if (charIndex > 0) {
+        timeout = setTimeout(() => eraseNext(charIndex - 1), ERASE_MS);
+      } else {
+        exampleIndex += 1;
+        timeout = setTimeout(() => typeNext(0), GAP_MS);
+      }
+    };
+
+    timeout = setTimeout(() => typeNext(0), GAP_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [enabled]);
+
+  return text;
+}
 
 export default function ChatInput({
   onSend,
   placeholder,
+  examples = [],
+  busy = false,
 }: {
   onSend: (text: string) => void;
+  /** Static placeholder — shown as-is while `busy`, or as a fallback before the first example types in. */
   placeholder: string;
+  /** Things the agent can help with, typed out one at a time to show the user what's in scope. */
+  examples?: string[];
+  busy?: boolean;
 }) {
   const [draft, setDraft] = useState("");
+  const animated = useTypewriterPlaceholder(examples, !busy && draft.length === 0);
+  const shownPlaceholder = busy ? placeholder : animated || placeholder;
 
   const submit = () => {
     if (!draft.trim()) return;
@@ -28,7 +95,7 @@ export default function ChatInput({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={placeholder}
+          placeholder={shownPlaceholder}
           aria-label={placeholder}
           className="flex-1 min-w-0 border-none outline-none bg-transparent text-[14.5px] py-1.5"
         />

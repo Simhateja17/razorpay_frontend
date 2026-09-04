@@ -103,3 +103,8 @@ body {
   border: 3px solid transparent;
   background-clip: content-box;
 }
+
+input::placeholder {
+  color: var(--ink-faint);
+  opacity: 1;
+}
