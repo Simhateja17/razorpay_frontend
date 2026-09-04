@@ -6,7 +6,7 @@ import ChatInput from "@/components/storefront/ChatInput";
 import KpiStrip from "@/components/portal/KpiStrip";
 import ApprovalQueue from "@/components/portal/ApprovalQueue";
 import MerchantComponent from "@/components/portal/MerchantComponent";
-import SignInGate from "@/components/shared/SignInGate";
+import RoleGate from "@/components/shared/RoleGate";
 
 // Openers that match what the merchant surface can actually do: read the store's own
 // records, and queue a change for approval. "Fashion pricing" was a legacy catalogue.
@@ -21,7 +21,7 @@ export default function PortalPage() {
   const empty = portalMessages.length === 0;
 
   return (
-    <SignInGate>
+    <RoleGate role="merchant_operator">
     <div className="h-full flex flex-col">
       <KpiStrip snapshot={snapshot} />
       <div className="flex-1 min-h-0 flex">
@@ -60,6 +60,6 @@ export default function PortalPage() {
         <ApprovalQueue />
       </div>
     </div>
-    </SignInGate>
+    </RoleGate>
   );
 }

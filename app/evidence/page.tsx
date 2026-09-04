@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { EvidenceOutcome, Journey } from "@/lib/types";
 import OriginBadge from "@/components/shared/OriginBadge";
 import JourneyView from "@/components/shared/JourneyView";
+import RoleGate from "@/components/shared/RoleGate";
 
 /**
  * The customer's own evidence, and the journeys inside it.
@@ -36,7 +37,15 @@ const OUTCOMES: (EvidenceOutcome | "all")[] = [
 ];
 
 export default function EvidencePage() {
-  const { evidence, refreshEvidence, session } = useAppState();
+  return (
+    <RoleGate role="customer">
+      <CustomerEvidencePage />
+    </RoleGate>
+  );
+}
+
+function CustomerEvidencePage() {
+  const { evidence, refreshEvidence } = useAppState();
   const [outcome, setOutcome] = useState<EvidenceOutcome | "all">("all");
   const [query, setQuery] = useState("");
   const [thisRunOnly, setThisRunOnly] = useState(true);
@@ -73,14 +82,6 @@ export default function EvidencePage() {
         }),
     [evidence, outcome, query, thisRunOnly, runId]
   );
-
-  if (!session) {
-    return (
-      <div className="h-full flex items-center justify-center text-[13px] text-ink-faint">
-        Sign in to see your own evidence.
-      </div>
-    );
-  }
 
   return (
     <div className="h-full flex flex-col bg-bg">

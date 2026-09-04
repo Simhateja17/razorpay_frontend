@@ -14,6 +14,8 @@ import { useAppState } from "@/lib/store/AppState";
 import OriginBadge from "@/components/shared/OriginBadge";
 import JourneyView from "@/components/shared/JourneyView";
 import { formatMinor } from "@/lib/format";
+import RoleGate from "@/components/shared/RoleGate";
+import { roleFromMetadata } from "@/lib/role-surface";
 
 /**
  * The operator's observability surface: journeys, production health, and the two
@@ -76,6 +78,9 @@ function ClaimTile({ claim }: { claim: Claim }) {
 
 export default function OperationsPage() {
   const { session } = useAppState();
+  const isOperator = session
+    ? roleFromMetadata(session.user.app_metadata) === "merchant_operator"
+    : false;
   const [tab, setTab] = useState<Tab>("journeys");
   const [demoRuns, setDemoRuns] = useState<DemoRun[]>([]);
   const [demoRun, setDemoRun] = useState<string>("");
@@ -99,8 +104,10 @@ export default function OperationsPage() {
   }, [demoRun]);
 
   useEffect(() => {
-    if (session) void load();
-  }, [session, load]);
+    if (!isOperator) return;
+    const task = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(task);
+  }, [isOperator, load]);
 
   const openJourney = useCallback(async (correlationId: string) => {
     try {
@@ -110,16 +117,9 @@ export default function OperationsPage() {
     }
   }, []);
 
-  if (!session) {
-    return (
-      <div className="h-full flex items-center justify-center text-[13px] text-ink-faint">
-        Sign in with an operator account to see operations.
-      </div>
-    );
-  }
-
   return (
-    <div className="h-full flex flex-col bg-bg">
+    <RoleGate role="merchant_operator">
+      <div className="h-full flex flex-col bg-bg">
       <div className="flex-none px-6 pt-6 pb-4 flex flex-col gap-1">
         <h1 className="text-[20px] font-semibold tracking-tight">Operations</h1>
         <p className="m-0 text-[13.5px] text-ink-muted leading-relaxed max-w-[70ch]">
@@ -337,7 +337,8 @@ export default function OperationsPage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </RoleGate>
   );
 }
 

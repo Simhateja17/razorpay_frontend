@@ -3,17 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAppState } from "@/lib/store/AppState";
-
-const TABS = [
-  { href: "/storefront", label: "Storefront" },
-  { href: "/portal", label: "Merchant portal" },
-  { href: "/evidence", label: "Evidence" },
-  { href: "/operations", label: "Operations" },
-];
+import { navigationForRole, roleFromMetadata } from "@/lib/role-surface";
 
 export default function HeaderNav() {
   const pathname = usePathname();
   const { session, signOut } = useAppState();
+  const role = session ? roleFromMetadata(session.user.app_metadata) : null;
+  const tabs = navigationForRole(role);
 
   return (
     <header className="flex-none flex items-center gap-5 px-5 h-14 bg-surface border-b border-border">
@@ -22,7 +18,7 @@ export default function HeaderNav() {
         <span className="font-mono text-[10px] text-ink-faint tracking-wide">AGENTIC COMMERCE</span>
       </div>
       <nav className="flex gap-1 p-[3px] bg-surface-muted rounded-[9px]">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const active = pathname?.startsWith(t.href);
           return (
             <Link

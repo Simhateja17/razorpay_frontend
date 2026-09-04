@@ -16,6 +16,7 @@ import {
 } from "@/lib/types";
 import { api, ApiError } from "@/lib/api";
 import { uid } from "@/lib/format";
+import { roleFromMetadata } from "@/lib/role-surface";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 
@@ -116,7 +117,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // from the verified token; this copy only decides which requests are worth making,
   // so an operator does not fire three customer-only calls and collect three 403s.
   // Trusting it for anything else would be trusting the client with authority.
-  const isShopper = (session?.user.app_metadata?.cartisan_role ?? "customer") === "customer";
+  const isShopper = session ? roleFromMetadata(session.user.app_metadata) === "customer" : false;
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
 
   const [storeMessages, setStoreMessages] = useState<ChatMessage[]>([]);
@@ -156,6 +157,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await supabase?.auth.signOut();
     setCart(EMPTY_CART);
     setStoreMessages([]);
+    setEvidence([]);
     // Nothing belonging to the previous principal survives the sign-out.
     setStage(null);
     setCheckout(null);
@@ -175,7 +177,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshEvidence = useCallback(async () => {
-    if (!session) return;
+    if (!session || !isShopper) return;
     await guarded(async () => {
       // The principal filter is applied by the server from the verified token and is
       // not negotiable. The demo run is NOT applied here: the page offers a "this
@@ -183,7 +185,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // be a control that lies about what it does.
       setEvidence(await api.myEvidence({ limit: 200 }));
     });
-  }, [session, guarded]);
+  }, [session, isShopper, guarded]);
 
   const refreshCart = useCallback(async () => {
     if (!session || !isShopper) return;

@@ -6,7 +6,7 @@ import ChatInput from "@/components/storefront/ChatInput";
 import CartSidebar from "@/components/storefront/CartSidebar";
 import StagePanel from "@/components/storefront/StagePanel";
 import PaymentPanel from "@/components/storefront/PaymentPanel";
-import SignInGate from "@/components/shared/SignInGate";
+import RoleGate from "@/components/shared/RoleGate";
 
 const SUGGESTED_PROMPTS = [
   "I need a laptop and a charger that can actually drive it",
@@ -19,7 +19,7 @@ export default function StorefrontPage() {
   const empty = storeMessages.length === 0;
 
   return (
-    <SignInGate>
+    <RoleGate role="customer">
     <div className="h-full flex">
       <main className="flex-1 min-w-0 flex flex-col bg-bg">
         <div className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
@@ -68,6 +68,6 @@ export default function StorefrontPage() {
       </main>
       <CartSidebar />
     </div>
-    </SignInGate>
+    </RoleGate>
   );
 }
