@@ -9,6 +9,7 @@ import {
   ConfirmedCheckout,
   ComponentKind,
   ComponentPayload,
+  ConversationSummary,
   MerchantChange,
   OrderApi,
   RenderedComponent,
@@ -27,8 +28,12 @@ function conversationId(key: string): string {
   if (typeof window === "undefined") return "server";
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
+  return newConversationId(key);
+}
+
+function newConversationId(key: string): string {
   const fresh = `${key}_${crypto.randomUUID().slice(0, 8)}`;
-  window.localStorage.setItem(key, fresh);
+  if (typeof window !== "undefined") window.localStorage.setItem(key, fresh);
   return fresh;
 }
 
@@ -72,6 +77,10 @@ interface AppState {
 
   // storefront
   storeMessages: ChatMessage[];
+  shopperConversationId: string;
+  chatHistory: ConversationSummary[];
+  startNewShopperChat: () => void;
+  selectShopperChat: (conversationId: string) => void;
   cart: CartApi;
   turnActive: boolean;
   progress: string | null;
@@ -108,7 +117,7 @@ interface AppState {
 const AppStateContext = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [shopperId] = useState(() => conversationId("cartisan_shopper"));
+  const [shopperId, setShopperId] = useState(() => conversationId("cartisan_shopper"));
   const [merchantId] = useState(() => conversationId("cartisan_merchant"));
   const [backendError, setBackendError] = useState<string | null>(null);
 
@@ -121,6 +130,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
 
   const [storeMessages, setStoreMessages] = useState<ChatMessage[]>([]);
+  const [chatHistory, setChatHistory] = useState<ConversationSummary[]>([]);
   const [cart, setCart] = useState<CartApi>(EMPTY_CART);
   const [turnActive, setTurnActive] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -157,6 +167,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await supabase?.auth.signOut();
     setCart(EMPTY_CART);
     setStoreMessages([]);
+    setChatHistory([]);
     setEvidence([]);
     // Nothing belonging to the previous principal survives the sign-out.
     setStage(null);
@@ -176,6 +187,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshChatHistory = useCallback(async () => {
+    if (!session || !isShopper) {
+      setChatHistory([]);
+      return;
+    }
+    const next = await guarded(() => api.storefrontConversations());
+    if (next) setChatHistory(next);
+  }, [session, isShopper, guarded]);
+
   const refreshEvidence = useCallback(async () => {
     if (!session || !isShopper) return;
     await guarded(async () => {
@@ -186,6 +206,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setEvidence(await api.myEvidence({ limit: 200 }));
     });
   }, [session, isShopper, guarded]);
+
+  useEffect(() => {
+    void refreshChatHistory();
+  }, [refreshChatHistory]);
 
   const refreshCart = useCallback(async () => {
     if (!session || !isShopper) return;
@@ -366,6 +390,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
   }, [session, isShopper]);
 
+  const startNewShopperChat = useCallback(() => {
+    if (turnActive) return;
+    setShopperId(newConversationId("cartisan_shopper"));
+    setStoreMessages([]);
+    setBackendError(null);
+  }, [turnActive]);
+
+  const selectShopperChat = useCallback(
+    (conversationIdToSelect: string) => {
+      if (
+        turnActive ||
+        conversationIdToSelect === shopperId ||
+        !chatHistory.some((chat) => chat.conversation_id === conversationIdToSelect)
+      ) return;
+      setShopperId(conversationIdToSelect);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("cartisan_shopper", conversationIdToSelect);
+      }
+      setStoreMessages([]);
+      setBackendError(null);
+    },
+    [chatHistory, shopperId, turnActive]
+  );
+
   /**
    * Run one agent turn, rendering its event stream as it arrives.
    *
@@ -490,8 +538,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // emitted no event; re-reading is cheap and keeps the panel honest.
       await refreshCart();
       await refreshEvidence();
+      await refreshChatHistory();
     },
-    [shopperId, session, turnActive, refreshCart, refreshEvidence]
+    [shopperId, session, turnActive, refreshCart, refreshEvidence, refreshChatHistory]
   );
 
   const addToCart = useCallback(
@@ -771,6 +820,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     signIn,
     signOut,
     storeMessages,
+    shopperConversationId: shopperId,
+    chatHistory,
+    startNewShopperChat,
+    selectShopperChat,
     cart,
     turnActive,
     progress,

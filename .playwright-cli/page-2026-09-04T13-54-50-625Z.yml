@@ -1,0 +1,16 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]: Cartisan
+      - generic [ref=e5]: AGENTIC COMMERCE
+    - navigation [ref=e6]:
+      - link "Storefront" [ref=e7] [cursor=pointer]:
+        - /url: /storefront
+      - link "Evidence" [ref=e8] [cursor=pointer]:
+        - /url: /evidence
+      - link "Merchant portal" [ref=e9] [cursor=pointer]:
+        - /url: /portal
+      - link "Operations" [ref=e10] [cursor=pointer]:
+        - /url: /operations
+    - generic [ref=e11]: SUPABASE DATA · TEST MODE
+  - generic [ref=e14]: Checking your session…

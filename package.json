@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:markdown": "node --test --experimental-strip-types tests/markdown.test.mjs",
     "test:role-surfaces": "node --test --experimental-strip-types tests/role-surface.test.mjs"
   },
   "dependencies": {

@@ -466,6 +466,14 @@ export interface ResumedConversation {
   }[];
 }
 
+export interface ConversationSummary {
+  conversation_id: string;
+  title: string | null;
+  turn_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // ------------------------------------------------------------- the evidence ledger
 // These replace the flat `AuditEntry`, which had no principal, no correlation, no
 // origin and no actor type — so every session's rows arrived in one list. An

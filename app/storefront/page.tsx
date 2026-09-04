@@ -6,6 +6,7 @@ import ChatInput from "@/components/storefront/ChatInput";
 import CartSidebar from "@/components/storefront/CartSidebar";
 import StagePanel from "@/components/storefront/StagePanel";
 import PaymentPanel from "@/components/storefront/PaymentPanel";
+import ConversationSwitcher from "@/components/storefront/ConversationSwitcher";
 import RoleGate from "@/components/shared/RoleGate";
 
 const SUGGESTED_PROMPTS = [
@@ -15,13 +16,33 @@ const SUGGESTED_PROMPTS = [
 ];
 
 export default function StorefrontPage() {
-  const { storeMessages, sendShopperMessage, turnActive, progress } = useAppState();
+  const {
+    storeMessages,
+    sendShopperMessage,
+    turnActive,
+    progress,
+    shopperConversationId,
+    chatHistory,
+    startNewShopperChat,
+    selectShopperChat,
+  } = useAppState();
   const empty = storeMessages.length === 0;
 
   return (
     <RoleGate role="customer">
     <div className="h-full flex">
       <main className="flex-1 min-w-0 flex flex-col bg-bg">
+        <div className="flex-none px-6 pt-3">
+          <div className="max-w-[720px] mx-auto flex items-center justify-end">
+            <ConversationSwitcher
+              conversations={chatHistory}
+              activeConversationId={shopperConversationId}
+              turnActive={turnActive}
+              onNewChat={startNewShopperChat}
+              onSelectChat={selectShopperChat}
+            />
+          </div>
+        </div>
         <div className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
           <div className="max-w-[720px] mx-auto flex flex-col gap-6">
             {empty && (

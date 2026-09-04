@@ -1,6 +1,7 @@
 "use client";
 
-import { RenderedComponent, Claim, ClaimKind } from "@/lib/types";
+import { useState } from "react";
+import { RenderedComponent, Claim, ClaimKind, MetricsPayload } from "@/lib/types";
 import { formatMinor } from "@/lib/format";
 import { useAppState } from "@/lib/store/AppState";
 
@@ -80,49 +81,7 @@ export default function MerchantComponent({ component }: { component: RenderedCo
       const p = component.payload;
       const peak = Math.max(1, ...p.points.map((point) => Math.abs(point.value)));
       const money = p.unit === "INR paise";
-      return (
-        <section className="ml-9 flex flex-col gap-2">
-          <div className="bg-white border border-border rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex justify-between items-baseline gap-3">
-              <span className="text-[13.5px] font-medium">{p.title}</span>
-              <ClaimTag kind={p.claim_kind} />
-            </div>
-            {p.total !== null && (
-              <span className="font-mono text-[22px] font-medium leading-none">
-                {p.total_label ?? (p.unit === "ratio" ? `${(p.total * 100).toFixed(1)}%` : p.total)}
-              </span>
-            )}
-
-            {p.points.length > 0 && (
-              <div className="flex items-end gap-1 h-[64px]" role="img" aria-label={p.title}>
-                {p.points.map((point) => (
-                  <div
-                    key={point.date}
-                    className="flex-1 bg-accent/25 rounded-t-sm min-w-[3px]"
-                    style={{ height: `${Math.max(3, (Math.abs(point.value) / peak) * 100)}%` }}
-                    title={`${point.date}: ${money ? formatMinor(point.value) : point.value}`}
-                  />
-                ))}
-              </div>
-            )}
-
-            <p className="m-0 text-[12.5px] text-[#3d3d39] leading-relaxed">{p.reading}</p>
-
-            <div className="flex flex-col gap-1 pt-1 border-t border-border-soft">
-              <span className="font-mono text-[9.5px] text-ink-faint tracking-wide">
-                {p.window_days}D · {p.origins.join(", ").toUpperCase()}
-                {p.group_by ? ` · BY ${p.group_by.toUpperCase()}` : ""}
-              </span>
-              <span className="text-[10.5px] text-ink-faint leading-relaxed">{p.basis}</span>
-              {p.limitations.map((note) => (
-                <span key={note} className="text-[10.5px] text-ink-faint leading-relaxed">
-                  {note}
-                </span>
-              ))}
-            </div>
-          </div>
-        </section>
-      );
+      return <MetricsChart p={p} peak={peak} money={money} />;
     }
 
     case "change_preview": {
@@ -161,6 +120,84 @@ export default function MerchantComponent({ component }: { component: RenderedCo
     case "suggestions":
       return <OperatorChips suggestions={component.payload.suggestions} />;
   }
+}
+
+function MetricsChart({
+  p,
+  peak,
+  money,
+}: {
+  p: MetricsPayload;
+  peak: number;
+  money: boolean;
+}) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const hovered = hoverIndex !== null ? p.points[hoverIndex] : null;
+
+  return (
+    <section className="ml-9 flex flex-col gap-2">
+      <div className="bg-white border border-border rounded-xl p-4 flex flex-col gap-3">
+        <div className="flex justify-between items-baseline gap-3">
+          <span className="text-[13.5px] font-medium">{p.title}</span>
+          <ClaimTag kind={p.claim_kind} />
+        </div>
+        {p.total !== null && (
+          <span className="font-mono text-[22px] font-medium leading-none">
+            {p.total_label ?? (p.unit === "ratio" ? `${(p.total * 100).toFixed(1)}%` : p.total)}
+          </span>
+        )}
+
+        {p.points.length > 0 && (
+          <div className="relative">
+            {hovered && (
+              <div className="pointer-events-none absolute -top-1 left-1/2 -translate-x-1/2 -translate-y-full z-10 whitespace-nowrap bg-ink text-white text-[11px] rounded-md px-2 py-1 shadow-md">
+                <div className="font-medium">
+                  {money ? formatMinor(hovered.value) : hovered.value}
+                  {typeof hovered.orders === "number" ? ` · ${hovered.orders} orders` : ""}
+                </div>
+                <div className="text-white/60 text-[10px]">{hovered.date}</div>
+              </div>
+            )}
+            <div
+              className="flex items-end gap-1 h-[64px]"
+              role="img"
+              aria-label={p.title}
+              onMouseLeave={() => setHoverIndex(null)}
+            >
+              {p.points.map((point, i) => (
+                <div
+                  key={point.date}
+                  onMouseEnter={() => setHoverIndex(i)}
+                  onFocus={() => setHoverIndex(i)}
+                  onBlur={() => setHoverIndex(null)}
+                  tabIndex={0}
+                  className={`flex-1 rounded-t-sm min-w-[3px] cursor-pointer transition-colors ${
+                    hoverIndex === i ? "bg-accent/60" : "bg-accent/25 hover:bg-accent/45"
+                  }`}
+                  style={{ height: `${Math.max(3, (Math.abs(point.value) / peak) * 100)}%` }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        <p className="m-0 text-[12.5px] text-[#3d3d39] leading-relaxed">{p.reading}</p>
+
+        <div className="flex flex-col gap-1 pt-1 border-t border-border-soft">
+          <span className="font-mono text-[9.5px] text-ink-faint tracking-wide">
+            {p.window_days}D · {p.origins.join(", ").toUpperCase()}
+            {p.group_by ? ` · BY ${p.group_by.toUpperCase()}` : ""}
+          </span>
+          <span className="text-[10.5px] text-ink-faint leading-relaxed">{p.basis}</span>
+          {p.limitations.map((note) => (
+            <span key={note} className="text-[10.5px] text-ink-faint leading-relaxed">
+              {note}
+            </span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function OperatorChips({ suggestions }: { suggestions: string[] }) {

@@ -5,6 +5,7 @@ import {
   CartApi,
   ConfirmedCheckout,
   DataOrigin,
+  ConversationSummary,
   EvidenceFilters,
   EvidenceRecord,
   HealthReport,
@@ -273,6 +274,8 @@ export const api = {
     req<ResumedConversation>(
       `/chat/storefront/resume?conversation_id=${encodeURIComponent(conversationId)}`
     ),
+  storefrontConversations: () =>
+    req<ConversationSummary[]>("/chat/storefront/conversations"),
   resumePortal: (conversationId: string) =>
     req<ResumedConversation>(
       `/chat/portal/resume?conversation_id=${encodeURIComponent(conversationId)}`

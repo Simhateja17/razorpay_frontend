@@ -2,6 +2,7 @@
 
 import { ChatMessage, RenderedComponent, ToolTrace } from "@/lib/types";
 import AgentComponent from "./AgentComponent";
+import Markdown from "./Markdown";
 
 /**
  * The transcript, on both surfaces. The message shape and the tool trail are the same
@@ -33,8 +34,8 @@ export default function MessageList({
               <div className="flex-1 min-w-0 flex flex-col gap-2">
                 {m.tools && m.tools.length > 0 && <ToolTrail tools={m.tools} />}
                 {m.text && (
-                  <div className="text-[14.5px] leading-relaxed text-ink whitespace-pre-wrap">
-                    {m.text}
+                  <div className="text-[14.5px] leading-relaxed text-ink">
+                    <Markdown text={m.text} />
                   </div>
                 )}
                 {m.typing && !m.text && (
