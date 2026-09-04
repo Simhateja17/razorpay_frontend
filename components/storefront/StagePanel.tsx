@@ -11,7 +11,7 @@ import { formatMinor } from "@/lib/format";
  * confirming is a separate act that the host performs (ADR 0005, ADR 0012).
  */
 export default function StagePanel() {
-  const { stage, confirmCheckout, cancelStage, checkoutError } = useAppState();
+  const { stage, confirmCheckout, cancelStage, checkoutError, confirmingCheckout } = useAppState();
   if (!stage) return null;
 
   return (
@@ -53,13 +53,15 @@ export default function StagePanel() {
       <div className="px-4 pb-4 flex flex-col gap-2">
         <button
           onClick={() => confirmCheckout(stage.stage_id)}
-          className="w-full bg-accent text-white border-none rounded-lg py-3 text-[14px] font-medium hover:bg-accent-hover transition-colors"
+          disabled={confirmingCheckout}
+          className="w-full bg-accent text-white border-none rounded-lg py-3 text-[14px] font-medium hover:bg-accent-hover transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          Confirm and continue to payment
+          {confirmingCheckout ? "Confirming…" : "Confirm and continue to payment"}
         </button>
         <button
           onClick={cancelStage}
-          className="w-full bg-white text-ink border border-border rounded-lg py-2 text-[12.5px] hover:bg-bg transition-colors"
+          disabled={confirmingCheckout}
+          className="w-full bg-white text-ink border border-border rounded-lg py-2 text-[12.5px] hover:bg-bg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
           Keep shopping
         </button>

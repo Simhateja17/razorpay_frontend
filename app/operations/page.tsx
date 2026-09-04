@@ -5,21 +5,17 @@ import { api } from "@/lib/api";
 import {
   DemoRun,
   HealthReport,
-  Journey,
-  JourneySummary,
   RecoveryQueue,
   Claim,
 } from "@/lib/types";
 import { useAppState } from "@/lib/store/AppState";
 import OriginBadge from "@/components/shared/OriginBadge";
-import JourneyView from "@/components/shared/JourneyView";
 import { formatMinor } from "@/lib/format";
 import RoleGate from "@/components/shared/RoleGate";
 import { roleFromMetadata } from "@/lib/role-surface";
 
 /**
- * The operator's observability surface: journeys, production health, and the two
- * stuck states the payment path can reach.
+ * The operator's health and recovery surface.
  *
  * It is deliberately not the portal chat. The portal is where an operator talks to
  * the merchant agent and approves what it proposes; this is where they check what
@@ -30,7 +26,7 @@ import { roleFromMetadata } from "@/lib/role-surface";
  * the operations token, host-triggered by design (ADR 0005), so this page shows what
  * is wrong, what it is attached to, and the exact command that fixes it.
  */
-type Tab = "journeys" | "health" | "recovery";
+type Tab = "health" | "recovery";
 
 function claimValue(claim: Claim): string {
   if (claim.value === null) return "—";
@@ -81,11 +77,9 @@ export default function OperationsPage() {
   const isOperator = session
     ? roleFromMetadata(session.user.app_metadata) === "merchant_operator"
     : false;
-  const [tab, setTab] = useState<Tab>("journeys");
+  const [tab, setTab] = useState<Tab>("health");
   const [demoRuns, setDemoRuns] = useState<DemoRun[]>([]);
   const [demoRun, setDemoRun] = useState<string>("");
-  const [journeys, setJourneys] = useState<JourneySummary[]>([]);
-  const [journey, setJourney] = useState<Journey | null>(null);
   const [health, setHealth] = useState<HealthReport | null>(null);
   const [recovery, setRecovery] = useState<RecoveryQueue | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +89,6 @@ export default function OperationsPage() {
     try {
       const filters = await api.evidenceFilters();
       setDemoRuns(filters.demo_runs);
-      setJourneys(await api.journeys({ demoRunId: demoRun || undefined, limit: 40 }));
       setHealth(await api.health(24, demoRun || undefined));
       setRecovery(await api.recoveryQueue());
     } catch (e) {
@@ -109,30 +102,20 @@ export default function OperationsPage() {
     return () => window.clearTimeout(task);
   }, [isOperator, load]);
 
-  const openJourney = useCallback(async (correlationId: string) => {
-    try {
-      setJourney(await api.journey(correlationId));
-    } catch {
-      setJourney(null);
-    }
-  }, []);
-
   return (
     <RoleGate role="merchant_operator">
       <div className="h-full flex flex-col bg-bg">
       <div className="flex-none px-6 pt-6 pb-4 flex flex-col gap-1">
         <h1 className="text-[20px] font-semibold tracking-tight">Operations</h1>
         <p className="m-0 text-[13.5px] text-ink-muted leading-relaxed max-w-[70ch]">
-          What the whole system has been doing: every journey from a customer request
-          through to the Razorpay evidence, how the runtime and the payment path are
-          holding up, and anything currently stuck. Filter to one demo run to exclude
-          every other session.
+          Runtime and payment health, plus anything currently stuck and the bounded host
+          recovery path. The complete explainable audit trail now lives in Evidence.
         </p>
       </div>
 
       <div className="flex-none px-6 pb-3 flex gap-2 items-center flex-wrap">
         <div className="flex gap-1 p-[3px] bg-surface-muted rounded-[9px]">
-          {(["journeys", "health", "recovery"] as Tab[]).map((value) => (
+          {(["health", "recovery"] as Tab[]).map((value) => (
             <button
               key={value}
               onClick={() => setTab(value)}
@@ -167,48 +150,6 @@ export default function OperationsPage() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
-        {tab === "journeys" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="flex flex-col gap-2">
-              {journeys.length === 0 && (
-                <div className="text-[13px] text-ink-faint py-10 text-center">
-                  No journeys recorded for this filter.
-                </div>
-              )}
-              {journeys.map((row) => (
-                <button
-                  key={row.correlation_id}
-                  onClick={() => openJourney(row.correlation_id)}
-                  className="text-left bg-white border border-border-soft rounded-lg px-4 py-3 flex flex-col gap-1.5 hover:border-border transition-colors"
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-[10.5px] text-ink-faint">
-                      {row.correlation_id}
-                    </span>
-                    {row.origins.map((origin) => (
-                      <OriginBadge key={origin} origin={origin} />
-                    ))}
-                    {(row.blocked > 0 || row.failed > 0) && (
-                      <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-danger-bg text-danger border border-danger-border ml-auto">
-                        {row.blocked + row.failed} refused
-                      </span>
-                    )}
-                  </div>
-                  <p className="m-0 text-[12.5px] text-[#5d5d58]">
-                    {row.started_by.actor_type ?? "—"} · {row.first_action ?? "—"} ·{" "}
-                    {row.records} records
-                    {row.orders.length > 0 &&
-                      ` · order ${row.orders[0].status} ${formatMinor(row.orders[0].total_minor)}`}
-                  </p>
-                </button>
-              ))}
-            </div>
-            <div className="bg-surface border border-border-soft rounded-lg p-4">
-              <JourneyView journey={journey} />
-            </div>
-          </div>
-        )}
-
         {tab === "health" && health && (
           <div className="flex flex-col gap-5">
             <p className="m-0 text-[12.5px] text-ink-faint">

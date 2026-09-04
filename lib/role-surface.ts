@@ -12,6 +12,7 @@ const CUSTOMER_TABS: readonly SurfaceTab[] = [
 
 const OPERATOR_TABS: readonly SurfaceTab[] = [
   { href: "/portal", label: "Merchant portal" },
+  { href: "/evidence", label: "Evidence" },
   { href: "/operations", label: "Operations" },
 ];
 
@@ -44,7 +45,6 @@ function isRoute(pathname: string, route: string): boolean {
 export function redirectForRole(role: AppRole, pathname: string): string | null {
   if (role === "merchant_operator") {
     if (isRoute(pathname, "/storefront")) return "/portal";
-    if (isRoute(pathname, "/evidence")) return "/operations";
     return null;
   }
   if (isRoute(pathname, "/portal") || isRoute(pathname, "/operations")) {

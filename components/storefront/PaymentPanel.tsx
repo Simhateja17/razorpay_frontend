@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAppState } from "@/lib/store/AppState";
 import { formatMinor } from "@/lib/format";
@@ -46,6 +46,25 @@ export default function PaymentPanel() {
   const { checkout, refreshOrder, retryPayment, paymentReturned, checkoutError, dismissCheckout } =
     useAppState();
   const [busy, setBusy] = useState<"check" | "retry" | null>(null);
+
+  const pollOrder = checkout?.order;
+  const orderId = pollOrder?.order_id;
+  // While a payment is outstanding, poll for the webhook-verified outcome instead of
+  // waiting on the customer to click "I've paid — check the status". Razorpay confirms
+  // asynchronously (ADR 0013), so this is the only way a failed or succeeded webhook
+  // shows up here without a manual check. Stops the moment the order reaches a
+  // terminal-for-the-panel state, and pauses while the tab is hidden.
+  useEffect(() => {
+    if (!orderId || !pollOrder || pollOrder.paid || pollOrder.status === "cancelled" ||
+        pollOrder.status === "expired") {
+      return;
+    }
+    const tick = () => {
+      if (document.visibilityState === "visible") refreshOrder(orderId);
+    };
+    const id = window.setInterval(tick, 4000);
+    return () => window.clearInterval(id);
+  }, [orderId, pollOrder?.status, pollOrder?.paid, refreshOrder]);
 
   if (!checkout) return null;
   const { order, payment } = checkout;
@@ -185,13 +204,15 @@ export default function PaymentPanel() {
           </button>
         )}
 
-        <button
-          onClick={() => run("check", () => refreshOrder(order.order_id))}
-          disabled={busy !== null}
-          className="w-full bg-white text-ink border border-border rounded-lg py-2 text-[12.5px] hover:bg-bg transition-colors disabled:opacity-50"
-        >
-          {busy === "check" ? "Checking…" : "I've paid — check the status"}
-        </button>
+        {awaiting && (
+          <button
+            onClick={() => run("check", () => refreshOrder(order.order_id))}
+            disabled={busy !== null}
+            className="w-full bg-white text-ink border border-border rounded-lg py-2 text-[12.5px] hover:bg-bg transition-colors disabled:opacity-50"
+          >
+            {busy === "check" ? "Checking…" : "Check now"}
+          </button>
+        )}
 
         {checkoutError && <span className="text-[12px] text-danger">{checkoutError}</span>}
 
@@ -206,8 +227,8 @@ export default function PaymentPanel() {
           {declined
             ? "That attempt failed. A new attempt starts fresh — nothing from the failed one carries over or gets charged twice."
             : awaiting
-              ? "Waiting on Razorpay to confirm this payment. Returning from the payment page isn't proof on its own, so this stays pending until Razorpay verifies it."
-              : "Real Razorpay test-mode link. This order is marked paid only once Razorpay confirms this exact order and amount."}
+              ? "Waiting on Razorpay to confirm this payment. We're checking automatically — no need to refresh."
+              : "Real Razorpay test-mode link. This order is marked paid only once Razorpay confirms this exact order and amount, and this page updates on its own once it does."}
         </span>
       </div>
       <OrderProvenance order={order} />

@@ -1,11 +1,13 @@
 "use client";
 
 import { useAppState } from "@/lib/store/AppState";
+import { useAutoScroll } from "@/lib/useAutoScroll";
 import MessageList from "@/components/storefront/MessageList";
 import ChatInput from "@/components/storefront/ChatInput";
 import KpiStrip from "@/components/portal/KpiStrip";
 import ApprovalQueue from "@/components/portal/ApprovalQueue";
 import MerchantComponent from "@/components/portal/MerchantComponent";
+import ConversationSwitcher from "@/components/storefront/ConversationSwitcher";
 import RoleGate from "@/components/shared/RoleGate";
 
 // Openers that match what the merchant surface can actually do: read the store's own
@@ -17,8 +19,18 @@ const SUGGESTED_PROMPTS = [
 ];
 
 export default function PortalPage() {
-  const { portalMessages, sendMerchantMessage, snapshot } = useAppState();
+  const {
+    portalMessages,
+    sendMerchantMessage,
+    snapshot,
+    merchantConversationId,
+    portalChatHistory,
+    startNewMerchantChat,
+    selectMerchantChat,
+    portalTurnActive,
+  } = useAppState();
   const empty = portalMessages.length === 0;
+  const scrollRef = useAutoScroll(portalMessages);
 
   return (
     <RoleGate role="merchant_operator">
@@ -26,7 +38,18 @@ export default function PortalPage() {
       <KpiStrip snapshot={snapshot} />
       <div className="flex-1 min-h-0 flex">
         <main className="flex-1 min-w-0 flex flex-col bg-bg">
-          <div className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
+          <div className="flex-none px-6 pt-3">
+            <div className="max-w-[720px] mx-auto flex items-center justify-end">
+              <ConversationSwitcher
+                conversations={portalChatHistory}
+                activeConversationId={merchantConversationId}
+                turnActive={portalTurnActive}
+                onNewChat={startNewMerchantChat}
+                onSelectChat={selectMerchantChat}
+              />
+            </div>
+          </div>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
             <div className="max-w-[720px] mx-auto flex flex-col gap-6">
               {empty && (
                 <div className="pt-6 pb-2 flex flex-col gap-4">

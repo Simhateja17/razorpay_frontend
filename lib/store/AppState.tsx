@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import {
   EvidenceRecord,
   BusinessSnapshot,
@@ -87,6 +87,7 @@ interface AppState {
   stage: StagedCheckout | null;
   checkout: ConfirmedCheckout | null;
   checkoutError: string | null;
+  confirmingCheckout: boolean;
   sendShopperMessage: (text: string) => Promise<void>;
   addToCart: (variantId: string, title: string) => Promise<void>;
   removeFromCart: (variantId: string) => Promise<void>;
@@ -101,6 +102,10 @@ interface AppState {
 
   // portal
   portalMessages: ChatMessage[];
+  merchantConversationId: string;
+  portalChatHistory: ConversationSummary[];
+  startNewMerchantChat: () => void;
+  selectMerchantChat: (conversationId: string) => void;
   portalTurnActive: boolean;
   snapshot: BusinessSnapshot | null;
   changes: MerchantChange[];
@@ -118,7 +123,7 @@ const AppStateContext = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [shopperId, setShopperId] = useState(() => conversationId("cartisan_shopper"));
-  const [merchantId] = useState(() => conversationId("cartisan_merchant"));
+  const [merchantId, setMerchantId] = useState(() => conversationId("cartisan_merchant"));
   const [backendError, setBackendError] = useState<string | null>(null);
 
   const [session, setSession] = useState<Session | null>(null);
@@ -137,8 +142,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [stage, setStage] = useState<StagedCheckout | null>(null);
   const [checkout, setCheckout] = useState<ConfirmedCheckout | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [confirmingCheckout, setConfirmingCheckout] = useState(false);
+  const confirmingCheckoutRef = useRef(false);
 
   const [portalMessages, setPortalMessages] = useState<ChatMessage[]>([]);
+  const [portalChatHistory, setPortalChatHistory] = useState<ConversationSummary[]>([]);
   const [portalTurnActive, setPortalTurnActive] = useState(false);
   const [snapshot, setSnapshot] = useState<BusinessSnapshot | null>(null);
   const [changes, setChanges] = useState<MerchantChange[]>([]);
@@ -168,6 +176,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setCart(EMPTY_CART);
     setStoreMessages([]);
     setChatHistory([]);
+    setPortalMessages([]);
+    setPortalChatHistory([]);
     setEvidence([]);
     // Nothing belonging to the previous principal survives the sign-out.
     setStage(null);
@@ -196,6 +206,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (next) setChatHistory(next);
   }, [session, isShopper, guarded]);
 
+  const refreshPortalChatHistory = useCallback(async () => {
+    if (!session || isShopper) {
+      setPortalChatHistory([]);
+      return;
+    }
+    const next = await guarded(() => api.portalConversations());
+    if (next) setPortalChatHistory(next);
+  }, [session, isShopper, guarded]);
+
   const refreshEvidence = useCallback(async () => {
     if (!session || !isShopper) return;
     await guarded(async () => {
@@ -210,6 +229,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshChatHistory();
   }, [refreshChatHistory]);
+
+  useEffect(() => {
+    void refreshPortalChatHistory();
+  }, [refreshPortalChatHistory]);
 
   const refreshCart = useCallback(async () => {
     if (!session || !isShopper) return;
@@ -414,6 +437,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [chatHistory, shopperId, turnActive]
   );
 
+  const startNewMerchantChat = useCallback(() => {
+    if (portalTurnActive) return;
+    setMerchantId(newConversationId("cartisan_merchant"));
+    setPortalMessages([]);
+    setBackendError(null);
+  }, [portalTurnActive]);
+
+  const selectMerchantChat = useCallback(
+    (conversationIdToSelect: string) => {
+      if (
+        portalTurnActive ||
+        conversationIdToSelect === merchantId ||
+        !portalChatHistory.some((chat) => chat.conversation_id === conversationIdToSelect)
+      ) return;
+      setMerchantId(conversationIdToSelect);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("cartisan_merchant", conversationIdToSelect);
+      }
+      setPortalMessages([]);
+      setBackendError(null);
+    },
+    [merchantId, portalChatHistory, portalTurnActive]
+  );
+
   /**
    * Run one agent turn, rendering its event stream as it arrives.
    *
@@ -596,7 +643,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
    */
   const confirmCheckout = useCallback(
     async (stageId: string) => {
-      if (!session) return;
+      // Guards a fast double click: the second call would otherwise race the
+      // first to the same stage and lose with a stale "no longer open" error.
+      if (!session || confirmingCheckoutRef.current) return;
+      confirmingCheckoutRef.current = true;
+      setConfirmingCheckout(true);
       setCheckoutError(null);
       try {
         const confirmed = await api.confirmCheckout(stageId);
@@ -610,6 +661,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         // A refusal here means nothing was created: no order, no hold, no charge.
         setCheckoutError(errorMessage(e));
         await refreshCart();
+      } finally {
+        confirmingCheckoutRef.current = false;
+        setConfirmingCheckout(false);
       }
       refreshEvidence();
     },
@@ -781,8 +835,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       if (staged) await refreshChanges();
       await refreshSnapshot();
       await refreshEvidence();
+      await refreshPortalChatHistory();
     },
-    [merchantId, session, portalTurnActive, refreshChanges, refreshSnapshot, refreshEvidence]
+    [
+      merchantId,
+      session,
+      portalTurnActive,
+      refreshChanges,
+      refreshSnapshot,
+      refreshEvidence,
+      refreshPortalChatHistory,
+    ]
   );
 
   /**
@@ -830,6 +893,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     stage,
     checkout,
     checkoutError,
+    confirmingCheckout,
     sendShopperMessage,
     addToCart,
     removeFromCart,
@@ -842,6 +906,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     paymentReturned,
     dismissCheckout,
     portalMessages,
+    merchantConversationId: merchantId,
+    portalChatHistory,
+    startNewMerchantChat,
+    selectMerchantChat,
     portalTurnActive,
     snapshot,
     changes,

@@ -262,10 +262,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ fulfillment_option: fulfillmentOption, note: note ?? null }),
     }),
+  // The key is derived from stage_id, not freshly generated, so a duplicate
+  // confirm for the *same* stage (double click, retried request) replays the
+  // first result instead of racing it and losing to a TransitionError.
   confirmCheckout: (stageId: string) =>
     req<ConfirmedCheckout>("/checkout/confirm", {
       method: "POST",
-      body: JSON.stringify({ stage_id: stageId, idempotency_key: crypto.randomUUID() }),
+      body: JSON.stringify({ stage_id: stageId, idempotency_key: `confirm:${stageId}` }),
     }),
 
   // What a reconnecting client should show. The transcript comes from the durable
@@ -280,6 +283,8 @@ export const api = {
     req<ResumedConversation>(
       `/chat/portal/resume?conversation_id=${encodeURIComponent(conversationId)}`
     ),
+  portalConversations: () =>
+    req<ConversationSummary[]>("/chat/portal/conversations"),
 
   orders: () => req<OrderApi[]>("/orders"),
   orderStatus: (orderId: string) => req<OrderApi>(`/orders/${encodeURIComponent(orderId)}`),

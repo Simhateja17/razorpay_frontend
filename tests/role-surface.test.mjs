@@ -13,13 +13,13 @@ test("customer navigation excludes merchant surfaces", () => {
 test("operator navigation excludes customer surfaces", () => {
   assert.deepEqual(
     navigationForRole("merchant_operator").map((tab) => tab.href),
-    ["/portal", "/operations"],
+    ["/portal", "/evidence", "/operations"],
   );
 });
 
 test("direct navigation redirects to a surface owned by the signed-in role", () => {
   assert.equal(redirectForRole("merchant_operator", "/storefront"), "/portal");
-  assert.equal(redirectForRole("merchant_operator", "/evidence"), "/operations");
+  assert.equal(redirectForRole("merchant_operator", "/evidence"), null);
   assert.equal(redirectForRole("customer", "/portal"), "/storefront");
   assert.equal(redirectForRole("customer", "/operations"), "/storefront");
   assert.equal(redirectForRole("customer", "/evidence"), null);

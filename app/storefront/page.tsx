@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppState } from "@/lib/store/AppState";
+import { useAutoScroll } from "@/lib/useAutoScroll";
 import MessageList from "@/components/storefront/MessageList";
 import ChatInput from "@/components/storefront/ChatInput";
 import CartSidebar from "@/components/storefront/CartSidebar";
@@ -27,6 +28,7 @@ export default function StorefrontPage() {
     selectShopperChat,
   } = useAppState();
   const empty = storeMessages.length === 0;
+  const scrollRef = useAutoScroll(storeMessages);
 
   return (
     <RoleGate role="customer">
@@ -43,7 +45,7 @@ export default function StorefrontPage() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
           <div className="max-w-[720px] mx-auto flex flex-col gap-6">
             {empty && (
               <div className="pt-11 pb-2 flex flex-col gap-4">
