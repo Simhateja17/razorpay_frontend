@@ -83,6 +83,13 @@ export interface PaymentAttemptApi {
   status: "created" | "pending" | "succeeded" | "failed" | "cancelled" | "expired";
   amount_minor: number;
   provider_reference?: string | null;
+  // Why the provider refused this attempt, when it did. Shown so a decline reads as
+  // a stated reason rather than as a status that silently stopped moving.
+  failure_reason?: string | null;
+  // Carried on the order itself (not just the live handoff response) so a client
+  // that lost its in-memory checkout state can rebuild the payment panel from
+  // GET /orders/{id} alone.
+  pay_url?: string | null;
 }
 
 export interface OrderApi {
@@ -105,6 +112,10 @@ export interface OrderApi {
   total_minor: number;
   amount_paid_minor: number;
   origin: DataOrigin;
+  // The journey this purchase belongs to, and what recovery is still open to it —
+  // both shown in the order view rather than only in the operator's queue (ADR 0030).
+  correlation_id: string | null;
+  recovery_actions: RecoveryAction[];
   created_at: string;
   // `title` is a catalogue lookup added at read time; the order itself stores the id
   // and the price it was bought at, which are the facts it must preserve.
@@ -185,7 +196,12 @@ export type ComponentKind =
   | "checkout"
   | "order_status"
   | "guide"
-  | "suggestions";
+  | "suggestions"
+  // The merchant surface. Both surfaces speak one event stream, so the portal and
+  // the storefront differ in which components they know, not in how they listen.
+  | "digest"
+  | "metrics"
+  | "change_preview";
 
 // A card the agent presented. `item_ref` is a server-issued, session-bound handle:
 // it is what a follow-up add names, and a variant id is not a substitute (ADR 0020).
@@ -269,6 +285,54 @@ export interface SuggestionsPayload {
   suggestions: string[];
 }
 
+// ------------------------------------------------------- merchant components
+
+// Every figure the merchant agent shows says what kind of claim it is (ADR 0017).
+// `causal` exists in the type because the backend gate refuses it by name; nothing
+// in Cartisan produces one, so it should never arrive.
+export type ClaimKind = "observed" | "estimated" | "causal";
+
+export interface DigestPayload {
+  title: string;
+  items: { heading: string; body: string; claim_kind: ClaimKind }[];
+  // What the turn actually read, so a reader can check the lines against the reads.
+  evidence: { metrics_read: string[]; claims_read: string[]; changes_staged: string[] };
+}
+
+export interface MetricsPayload {
+  title: string;
+  metric: string;
+  window_days: number;
+  group_by: string | null;
+  unit: string;
+  origins: DataOrigin[];
+  points: { date: string; value: number; orders?: number }[];
+  total: number | null;
+  total_label: string | null;
+  claim_kind: ClaimKind;
+  // The formula the figure came from, shown beside it rather than kept server-side.
+  basis: string;
+  limitations: string[];
+  reading: string;
+}
+
+export interface ChangePreviewPayload {
+  change_id: string;
+  kind: MerchantChangeKind;
+  target_type: string;
+  target_id: string | null;
+  status: MerchantChangeStatus;
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+  rationale: string;
+  created_at: string;
+  policy_bounds: Record<string, unknown>;
+  note: string | null;
+  // Always "host_decide_merchant_change": the agent previews, the operator decides.
+  decision_action: string;
+  approval_surface: string;
+}
+
 export type ComponentPayload =
   | ProductsPayload
   | ComparisonPayload
@@ -276,7 +340,10 @@ export type ComponentPayload =
   | CheckoutComponentPayload
   | OrderStatusPayload
   | GuidePayload
-  | SuggestionsPayload;
+  | SuggestionsPayload
+  | DigestPayload
+  | MetricsPayload
+  | ChangePreviewPayload;
 
 // One rendered component, tagged so the renderer can narrow the payload safely.
 export type RenderedComponent =
@@ -286,7 +353,10 @@ export type RenderedComponent =
   | { kind: "checkout"; payload: CheckoutComponentPayload }
   | { kind: "order_status"; payload: OrderStatusPayload }
   | { kind: "guide"; payload: GuidePayload }
-  | { kind: "suggestions"; payload: SuggestionsPayload };
+  | { kind: "suggestions"; payload: SuggestionsPayload }
+  | { kind: "digest"; payload: DigestPayload }
+  | { kind: "metrics"; payload: MetricsPayload }
+  | { kind: "change_preview"; payload: ChangePreviewPayload };
 
 // A tool call the turn made, shown so a person can see what the agent actually did.
 export interface ToolTrace {
@@ -307,52 +377,256 @@ export interface Principal {
   display_name: string | null;
 }
 
-export type ApprovalStatus = "pending" | "approved" | "rejected";
+// A staged change, exactly as `merchant_changes` holds it. The agent can put one
+// here and nothing else: `pending` is the only status a model-reachable path can
+// produce, and approval and application are the operator's, through the host
+// (ADR 0016).
+export type MerchantChangeStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "applied"
+  | "failed"
+  | "superseded";
 
-export interface Approval {
+export type MerchantChangeKind =
+  | "inventory_action"
+  | "price_update"
+  | "promotion"
+  | "campaign"
+  | "listing_update";
+
+export interface MerchantApproval {
   id: string;
-  kind: string;
+  change_id: string;
+  operator_id: string;
+  decision: "approved" | "rejected";
+  note: string | null;
+  decided_at: string;
+}
+
+export interface MerchantChange {
+  id: string;
+  kind: MerchantChangeKind;
+  target_type: string;
   target_id: string | null;
+  status: MerchantChangeStatus;
   before: Record<string, unknown>;
   after: Record<string, unknown>;
-  reasoning: string;
-  status: ApprovalStatus;
+  rationale: string;
   created_at: string;
   decided_at: string | null;
+  applied_at: string | null;
+  approvals: MerchantApproval[];
+}
+
+// A number with everything needed to check it: the formula in `basis`, the operands
+// in `inputs`, and what it cannot support in `limitations`.
+export interface Claim {
+  key: string;
+  value: number | null;
+  unit: string;
+  claim_kind: ClaimKind;
+  basis: string;
+  inputs: Record<string, unknown>;
+  limitations: string[];
+  value_label?: string;
 }
 
 export interface BusinessSnapshot {
-  period: string;
+  window_days: number;
   currency: string;
-  sales: number;
-  orders: number;
-  traffic: number | null;
-  conversion_rate: number | null;
-  average_order_value: number;
-  limitations: { source: string; note: string }[];
+  origins: DataOrigin[];
+  claims: Claim[];
+  movements: Claim[];
+  limitations: string[];
 }
 
-export type AuditOutcome = "ok" | "pending_approval" | "approved" | "rejected" | "failed";
+/**
+ * What a reconnecting client is shown (ADR 0029).
+ *
+ * `history` comes from the durable `turns` table, not from the model's message
+ * array: that array holds tool_use/tool_result pairs only the running turn can
+ * complete, and it stays in the process running the turn. This is what a person
+ * needs back — what they asked, and what they were told — so a reload, or a restart
+ * of the backend mid-demo, repaints the conversation instead of losing it.
+ */
+export interface ResumedConversation {
+  state: "idle" | "received" | "running" | "awaiting_tool" | "completed" | "failed" | "abandoned";
+  turn_id: string | null;
+  agent_message: string | null;
+  history: {
+    id: string;
+    sequence: number;
+    state: string;
+    user_message: string | null;
+    agent_message: string | null;
+    correlation_id: string | null;
+    started_at: string;
+  }[];
+}
 
-export interface AuditEntry {
+// ------------------------------------------------------------- the evidence ledger
+// These replace the flat `AuditEntry`, which had no principal, no correlation, no
+// origin and no actor type — so every session's rows arrived in one list. An
+// evidence record has all four, which is what makes a filtered view possible at
+// all (ADR 0023, ADR 0032).
+
+export type EvidenceOutcome = "applied" | "blocked" | "unavailable" | "failed" | "conflict";
+export type ActorType = "customer" | "merchant_operator" | "agent" | "system" | "provider";
+
+export interface EvidenceRecord {
   id: string;
-  timestamp: string;
-  session_id: string;
-  agent: AgentKind;
+  recorded_at: string;
+  actor_type: ActorType;
+  actor_id: string | null;
+  surface: string | null;
   action: string;
-  reasoning: string;
-  outcome: AuditOutcome;
-  gated: boolean;
-  result: unknown;
+  target_type: string | null;
+  target_id: string | null;
+  reason: string;
+  outcome: EvidenceOutcome;
+  policy_checks: unknown;
+  state_ref: unknown;
+  prompt_version: string | null;
+  skill_versions: string[] | null;
+  data_origin: DataOrigin;
+  demo_run_id: string | null;
+  correlation_id: string | null;
+  turn_id: string | null;
+  tool_execution_id: string | null;
 }
 
-// The portal still runs the pre-Phase-5 single-`message` reply shape.
-export interface ChatReply {
-  id: string;
-  role: "agent";
-  text: string;
-  why?: string;
-  approval?: Approval | null;
+export interface DemoRun {
+  demo_run_id: string;
+  records: number;
+  journeys: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface EvidenceFilters {
+  demo_runs: DemoRun[];
+  origins: DataOrigin[];
+  actions: { action: string; count: number }[];
+}
+
+export interface JourneySummary {
+  correlation_id: string;
+  started_at: string;
+  ended_at: string;
+  records: number;
+  applied: number;
+  blocked: number;
+  failed: number;
+  conflicts: number;
+  unavailable: number;
+  started_by: { actor_type: ActorType | null; actor_id: string | null; surface: string | null };
+  first_action: string | null;
+  demo_run_id: string | null;
+  origins: DataOrigin[];
+  orders: { id: string; status: string; total_minor: number; origin: DataOrigin }[];
+}
+
+// One step of a journey. `source` says which record it came from, so a reader can
+// tell a model action from a database transition from the provider's own answer.
+export type JourneyStepSource =
+  | "evidence"
+  | "turn"
+  | "tool"
+  | "order"
+  | "payment_attempt"
+  | "provider_event";
+
+export interface JourneyStep {
+  source: JourneyStepSource;
+  at: string | null;
+  label: string;
+  outcome: EvidenceOutcome | null;
+  origin: DataOrigin | null;
+  detail: Record<string, unknown>;
+}
+
+export interface Journey extends Partial<JourneySummary> {
+  correlation_id: string;
+  found: boolean;
+  steps: JourneyStep[];
+}
+
+// ---------------------------------------------------------------- health metrics
+
+export interface HealthReport {
+  window_hours: number;
+  demo_run_id: string | null;
+  generated_at: string;
+  runtime: Claim[];
+  tools: Claim[];
+  payments: Claim[];
+  delivery: Claim[];
+  tool_outcomes: {
+    tool_name: string;
+    outcome: EvidenceOutcome;
+    count: number;
+    mean_latency_ms: number;
+  }[];
+  origins: { data_origin: DataOrigin; count: number }[];
+}
+
+// -------------------------------------------------------------- payment recovery
+
+export type RecoveryAction =
+  | "retry_message"
+  | "acknowledge"
+  | "reprocess_event"
+  | "retry_payment"
+  | "cancel_order"
+  | "await_verification";
+
+export interface StuckOrderSummary {
+  order_id: string;
+  customer_id: string;
+  status: OrderApi["status"];
+  total_minor: number;
+  amount_paid_minor: number;
+  origin: DataOrigin;
+  correlation_id: string | null;
+  created_at: string;
+  recovery_actions?: RecoveryAction[];
+}
+
+export interface DeadLetter {
+  message_id: string;
+  topic: string;
+  attempts: number;
+  last_error: string | null;
+  correlation_id: string | null;
+  created_at: string;
+  payload: Record<string, unknown>;
+  order_id: string | null;
+  order: StuckOrderSummary | null;
+  recovery_actions: RecoveryAction[];
+}
+
+export interface ProviderEventRow {
+  inbox_id: string;
+  provider: string;
+  provider_event_id: string;
+  event_type: string;
+  status: "received" | "processed" | "ignored" | "quarantined";
+  quarantine_reason: string | null;
+  correlation_id: string | null;
+  received_at: string;
+  processed_at: string | null;
+  payload: Record<string, unknown>;
+  order: StuckOrderSummary | null;
+  recovery_actions: RecoveryAction[];
+}
+
+export interface RecoveryQueue {
+  dead_letters: DeadLetter[];
+  quarantined: ProviderEventRow[];
+  unprocessed: ProviderEventRow[];
+  stuck_orders: StuckOrderSummary[];
 }
 
 // UI-local chat message shape (both user + agent turns, rendered in MessageList).

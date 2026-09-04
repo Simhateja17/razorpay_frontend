@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAppState } from "@/lib/store/AppState";
 import { formatMinor } from "@/lib/format";
+import OriginBadge from "@/components/shared/OriginBadge";
+import { OrderApi } from "@/lib/types";
 
 /**
  * The confirmed order and its Razorpay handoff.
@@ -13,6 +16,32 @@ import { formatMinor } from "@/lib/format";
  * provider event proves the exact order, amount and reference were fully paid
  * (ADR 0013). A retry is a new attempt on the same order, never a second order.
  */
+
+/**
+ * What kind of record this order is, and the journey it belongs to.
+ *
+ * Shown on every state of the panel — paid, cancelled, waiting — because an order
+ * is exactly the place a reader might otherwise assume a purchase is live when it
+ * is seeded, or the reverse (ADR 0008, ADR 0032). The correlation id links to the
+ * evidence for this one purchase and nothing else.
+ */
+function OrderProvenance({ order }: { order: OrderApi }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border-soft mt-1">
+      <span className="font-mono text-[10.5px] text-ink-faint">order {order.order_id}</span>
+      <OriginBadge origin={order.origin} />
+      {order.correlation_id && (
+        <Link
+          href="/evidence"
+          className="font-mono text-[10.5px] text-ink-faint underline underline-offset-2 hover:text-ink ml-auto"
+          title="Follow this purchase end to end in the evidence view"
+        >
+          {order.correlation_id}
+        </Link>
+      )}
+    </div>
+  );
+}
 export default function PaymentPanel() {
   const { checkout, refreshOrder, retryPayment, paymentReturned, checkoutError, dismissCheckout } =
     useAppState();
@@ -48,12 +77,19 @@ export default function PaymentPanel() {
         >
           Done
         </button>
+        <OrderProvenance order={order} />
       </section>
     );
   }
 
   const terminal = order.status === "cancelled" || order.status === "expired";
-  const declined = order.attempts.some((a) => a.status === "failed") && !terminal;
+  // Only the LATEST attempt's outcome describes the current situation. An order
+  // keeps every attempt it has ever made, so checking "has any attempt ever
+  // failed" would keep this panel showing "declined" forever after the very
+  // first decline — including once a fresh attempt exists and just needs its
+  // link, or once that fresh attempt has already been paid.
+  const latestAttempt = order.attempts[order.attempts.length - 1];
+  const declined = latestAttempt?.status === "failed" && !terminal;
   const awaiting = order.status === "payment_verification_pending";
 
   if (terminal) {
@@ -71,7 +107,7 @@ export default function PaymentPanel() {
           Nothing was charged, and the items it was holding are back in stock. Add them
           again to start a fresh checkout.
         </p>
-        <span className="font-mono text-[10.5px] text-ink-faint">order {order.order_id}</span>
+        <OrderProvenance order={order} />
       </section>
     );
   }
@@ -89,7 +125,7 @@ export default function PaymentPanel() {
         {declined && (
           <p className="m-0 text-[13px] leading-relaxed text-[#5d5d58]">
             That payment didn&apos;t go through, and nothing was charged. Your order and
-            the items it&apos;s holding are still here — try again with the link below.
+            the items it&apos;s holding are still here — try again below.
           </p>
         )}
 
@@ -117,7 +153,19 @@ export default function PaymentPanel() {
       </div>
 
       <div className="px-4 pb-4 flex flex-col gap-2">
-        {payment.pay_url ? (
+        {/* A declined attempt's link is dead at the provider — Razorpay itself would
+            show it as cancelled. So the primary action here is always a fresh
+            attempt, not the old link; `retryPayment` opens a new attempt on the
+            same order rather than a new order (ADR 0030). */}
+        {declined ? (
+          <button
+            onClick={() => run("retry", () => retryPayment(order.order_id))}
+            disabled={busy !== null}
+            className="w-full bg-accent text-white border-none rounded-lg py-3 text-[14px] font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+          >
+            {busy === "retry" ? "Starting a new attempt…" : "Try again"}
+          </button>
+        ) : payment.pay_url ? (
           <a
             href={payment.pay_url}
             target="_blank"
@@ -137,16 +185,6 @@ export default function PaymentPanel() {
           </button>
         )}
 
-        {declined && payment.pay_url && (
-          <button
-            onClick={() => run("retry", () => retryPayment(order.order_id))}
-            disabled={busy !== null}
-            className="w-full bg-white text-ink border border-border rounded-lg py-2 text-[12.5px] hover:bg-bg transition-colors disabled:opacity-50"
-          >
-            {busy === "retry" ? "Starting a new attempt…" : "Start a new payment attempt"}
-          </button>
-        )}
-
         <button
           onClick={() => run("check", () => refreshOrder(order.order_id))}
           disabled={busy !== null}
@@ -158,11 +196,21 @@ export default function PaymentPanel() {
         {checkoutError && <span className="text-[12px] text-danger">{checkoutError}</span>}
 
         <span className="text-[11px] text-ink-faint text-center leading-relaxed">
-          {awaiting
-            ? "Waiting on Razorpay to confirm this payment. Returning from the payment page isn't proof on its own, so this stays pending until Razorpay verifies it."
-            : "Real Razorpay test-mode link. This order is marked paid only once Razorpay confirms this exact order and amount."}
+          {/* `declined` and `awaiting` can both be true at once — the order can sit
+              in payment_verification_pending with its most recent attempt failed,
+              since a decline settles the attempt without moving the order back to
+              pending_payment. A failed attempt is a definite outcome, so it takes
+              priority over "still waiting": telling the customer their card was
+              declined while also saying "hang on, we're waiting to hear back" would
+              contradict itself. */}
+          {declined
+            ? "That attempt failed. A new attempt starts fresh — nothing from the failed one carries over or gets charged twice."
+            : awaiting
+              ? "Waiting on Razorpay to confirm this payment. Returning from the payment page isn't proof on its own, so this stays pending until Razorpay verifies it."
+              : "Real Razorpay test-mode link. This order is marked paid only once Razorpay confirms this exact order and amount."}
         </span>
       </div>
+      <OrderProvenance order={order} />
     </section>
   );
 }

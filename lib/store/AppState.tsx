@@ -2,15 +2,14 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
 import {
-  Approval,
-  ApprovalStatus,
-  AuditEntry,
+  EvidenceRecord,
   BusinessSnapshot,
   CartApi,
   ChatMessage,
   ConfirmedCheckout,
   ComponentKind,
   ComponentPayload,
+  MerchantChange,
   OrderApi,
   RenderedComponent,
   StagedCheckout,
@@ -20,7 +19,7 @@ import { uid } from "@/lib/format";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
 import type { Session } from "@supabase/supabase-js";
 
-// A conversation id groups a chat thread for narration and audit only. It carries
+// A conversation id groups a chat thread for narration and evidence only. It carries
 // no authority: the cart, orders, and checkout all belong to the signed-in
 // customer, so the same shopper sees one cart across every conversation and tab.
 function conversationId(key: string): string {
@@ -40,14 +39,22 @@ const EMPTY_CART: CartApi = {
   cart_id: "", customer_id: "", state_version: 0, lines: [], subtotal_minor: 0, currency: "INR",
 };
 
-// The components the storefront knows how to draw. An event naming anything else is
-// dropped rather than rendered blank — the stream contract is "render what you know".
-const RENDERABLE: ReadonlySet<ComponentKind> = new Set<ComponentKind>([
+// What each surface knows how to draw. An event naming anything else is dropped
+// rather than rendered blank — the stream contract is "render what you know" — and
+// the two sets are separate so a merchant card can never appear in the storefront.
+const SHOPPING_COMPONENTS: ReadonlySet<ComponentKind> = new Set<ComponentKind>([
   "products", "comparison", "cart", "checkout", "order_status", "guide", "suggestions",
 ]);
+const MERCHANT_COMPONENTS: ReadonlySet<ComponentKind> = new Set<ComponentKind>([
+  "digest", "metrics", "change_preview", "suggestions",
+]);
 
-function asComponent(component: string, payload: ComponentPayload): RenderedComponent | null {
-  return RENDERABLE.has(component as ComponentKind)
+function asComponent(
+  known: ReadonlySet<ComponentKind>,
+  component: string,
+  payload: ComponentPayload
+): RenderedComponent | null {
+  return known.has(component as ComponentKind)
     ? ({ kind: component, payload } as RenderedComponent)
     : null;
 }
@@ -84,14 +91,17 @@ interface AppState {
 
   // portal
   portalMessages: ChatMessage[];
+  portalTurnActive: boolean;
   snapshot: BusinessSnapshot | null;
-  approvals: Approval[];
+  changes: MerchantChange[];
+  decisionError: string | null;
   sendMerchantMessage: (text: string) => Promise<void>;
-  decideApproval: (id: string, decision: ApprovalStatus) => Promise<void>;
+  decideChange: (id: string, decision: "approved" | "rejected") => Promise<void>;
 
-  // audit
-  audit: AuditEntry[];
-  refreshAudit: () => Promise<void>;
+  // evidence — this principal's own ledger rows, newest first, scoped to this
+  // demo run so a judge sees this session and not every session that ever ran.
+  evidence: EvidenceRecord[];
+  refreshEvidence: () => Promise<void>;
 }
 
 const AppStateContext = createContext<AppState | null>(null);
@@ -102,6 +112,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [backendError, setBackendError] = useState<string | null>(null);
 
   const [session, setSession] = useState<Session | null>(null);
+  // Which surfaces this session has. The role is authority and the server reads it
+  // from the verified token; this copy only decides which requests are worth making,
+  // so an operator does not fire three customer-only calls and collect three 403s.
+  // Trusting it for anything else would be trusting the client with authority.
+  const isShopper = (session?.user.app_metadata?.cartisan_role ?? "customer") === "customer";
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
 
   const [storeMessages, setStoreMessages] = useState<ChatMessage[]>([]);
@@ -113,10 +128,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const [portalMessages, setPortalMessages] = useState<ChatMessage[]>([]);
+  const [portalTurnActive, setPortalTurnActive] = useState(false);
   const [snapshot, setSnapshot] = useState<BusinessSnapshot | null>(null);
-  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [changes, setChanges] = useState<MerchantChange[]>([]);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
 
-  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [evidence, setEvidence] = useState<EvidenceRecord[]>([]);
 
 
   useEffect(() => {
@@ -157,24 +174,29 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const refreshAudit = useCallback(async () => {
+  const refreshEvidence = useCallback(async () => {
+    if (!session) return;
     await guarded(async () => {
-      const rows = await api.audit();
-      setAudit(rows);
+      // The principal filter is applied by the server from the verified token and is
+      // not negotiable. The demo run is NOT applied here: the page offers a "this
+      // session only" toggle, and a toggle that cannot widen what was fetched would
+      // be a control that lies about what it does.
+      setEvidence(await api.myEvidence({ limit: 200 }));
     });
-  }, [guarded]);
+  }, [session, guarded]);
 
   const refreshCart = useCallback(async () => {
-    if (!session) return;
+    if (!session || !isShopper) return;
     await guarded(async () => setCart(await api.cartRead()));
-  }, [session, guarded]);
+  }, [session, isShopper, guarded]);
 
   // The cart is re-read whenever the principal changes, so signing in or out
   // never leaves another shopper's cart on screen.
   // Signing out clears the cart explicitly, so this effect only ever loads a cart
-  // for a present principal — it never has to blank one out mid-render.
+  // for a present principal — it never has to blank one out mid-render. An operator
+  // has no cart at all, so it does not ask for one.
   useEffect(() => {
-    if (!session) return;
+    if (!session || !isShopper) return;
     let active = true;
     api.cartRead()
       .then((next) => {
@@ -188,14 +210,150 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [session, isShopper]);
+
+  // The conversation itself is server-authoritative too, now that turns are durable.
+  // On sign-in the transcript is repainted from the `turns` table, so a reload — or a
+  // restart of the backend mid-demo — brings back what was asked and what was
+  // answered rather than an empty thread beside an order that plainly exists.
+  //
+  // Only completed turns carry an agent message worth repainting; a failed or
+  // abandoned one is left out rather than shown as if it had answered.
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    if (!isShopper) return;
+    api.resumeStorefront(shopperId)
+      .then((resumed) => {
+        if (!active || resumed.history.length === 0) return;
+        const restored: ChatMessage[] = [];
+        for (const turn of resumed.history) {
+          if (turn.user_message) {
+            restored.push({ id: `${turn.id}-u`, role: "user", text: turn.user_message });
+          }
+          if (turn.agent_message && turn.state === "completed") {
+            restored.push({ id: `${turn.id}-a`, role: "agent", text: turn.agent_message });
+          }
+        }
+        // Never clobber a live conversation: if this tab has already said something,
+        // what is on screen is newer than what the server last stored.
+        setStoreMessages((current) => (current.length === 0 ? restored : current));
+      })
+      .catch(() => {
+        // A transcript we could not restore is an empty thread, not an error the
+        // customer should be shown; everything else on the page still works.
+      });
+    return () => {
+      active = false;
+    };
+  }, [session, shopperId, isShopper]);
+
+  // The operator transcript is durable for the same reason as the storefront one.
+  // Repaint it after reload without mixing it into the customer conversation.
+  useEffect(() => {
+    if (!session || isShopper) return;
+    let active = true;
+    api.resumePortal(merchantId)
+      .then((resumed) => {
+        if (!active || resumed.history.length === 0) return;
+        const restored: ChatMessage[] = [];
+        for (const turn of resumed.history) {
+          if (turn.user_message) {
+            restored.push({ id: `${turn.id}-u`, role: "user", text: turn.user_message });
+          }
+          if (turn.agent_message && turn.state === "completed") {
+            restored.push({ id: `${turn.id}-a`, role: "agent", text: turn.agent_message });
+          }
+        }
+        setPortalMessages((current) => (current.length === 0 ? restored : current));
+      })
+      .catch(() => {
+        // The rest of the operator surface remains usable if history is unavailable.
+      });
+    return () => {
+      active = false;
+    };
+  }, [session, merchantId, isShopper]);
+
+  // The cart and orders are server-authoritative and survive a reload; the staged
+  // preview and confirmed-checkout panel are not — they live only in this component's
+  // state. Without this, a customer who reloads mid-checkout (or opens the app in a
+  // new tab after a decline) loses all sight of an order that is still real, still
+  // holding stock, and still retryable: the order itself isn't lost, only the UI's
+  // knowledge of it. So on sign-in, resume the most recent order that is neither paid
+  // nor terminal, reconstructing a payment handoff from its latest attempt.
+  useEffect(() => {
+    if (!session || !isShopper) return;
+    let active = true;
+    api.orders()
+      .then((orders) => {
+        if (!active) return;
+        const open = orders.find(
+          (o) => !o.paid && o.status !== "cancelled" && o.status !== "expired" && o.status !== "refunded"
+        );
+        if (!open) return;
+        const latestAttempt = open.attempts[open.attempts.length - 1];
+        setCheckout({
+          order: open,
+          payment: {
+            attempt_id: latestAttempt?.attempt_id ?? "",
+            status: latestAttempt?.status ?? "created",
+            amount_minor: open.total_minor,
+            currency: open.currency,
+            provider_reference: latestAttempt?.provider_reference ?? null,
+            pay_url: latestAttempt?.pay_url ?? null,
+          },
+        });
+      })
+      .catch(() => {
+        // Silent: a resumable order is a courtesy, not something worth surfacing an
+        // error banner for on every sign-in.
+      });
+    return () => {
+      active = false;
+    };
+  }, [session, isShopper]);
+
+  // The approval queue and the headline snapshot both need an operator principal, so
+  // they load once a session exists and are silent when the signed-in user is a
+  // shopper — the portal is simply not their surface, which is not an error to show.
+  const refreshChanges = useCallback(async () => {
+    if (!session || isShopper) return;
+    try {
+      setChanges(await api.changes());
+    } catch {
+      /* a shopper gets 403 here; the portal page is what reports that */
+    }
+  }, [session, isShopper]);
+
+  const refreshSnapshot = useCallback(async () => {
+    if (!session || isShopper) return;
+    try {
+      setSnapshot(await api.portalSnapshot());
+    } catch {
+      /* as above */
+    }
+  }, [session, isShopper]);
 
   useEffect(() => {
+    void refreshChanges();
+    void refreshSnapshot();
+  }, [refreshChanges, refreshSnapshot]);
+
+  useEffect(() => {
+    // Evidence is per-principal, so there is nothing to load until someone is
+    // signed in — and signing out has to clear what the last principal could see.
+    // `/evidence` is the customer's own ledger, so an operator has none to read here;
+    // theirs is the store-wide view on the operations page.
+    if (!session || !isShopper) {
+      setEvidence([]);
+      return;
+    }
     let active = true;
-    api.approvals()
+    api.myEvidence({ limit: 200 })
       .then((next) => {
         if (!active) return;
-        setApprovals(next);
+        setEvidence(next);
         setBackendError(null);
       })
       .catch((error) => {
@@ -204,40 +362,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, []);
-
-  useEffect(() => {
-    if (merchantId === "server") return;
-    let active = true;
-    api.portalSnapshot(merchantId)
-      .then((next) => {
-        if (!active) return;
-        setSnapshot(next);
-        setBackendError(null);
-      })
-      .catch((error) => {
-        if (active) setBackendError(errorMessage(error));
-      });
-    return () => {
-      active = false;
-    };
-  }, [merchantId]);
-
-  useEffect(() => {
-    let active = true;
-    api.audit()
-      .then((next) => {
-        if (!active) return;
-        setAudit(next);
-        setBackendError(null);
-      })
-      .catch((error) => {
-        if (active) setBackendError(errorMessage(error));
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  }, [session, isShopper]);
 
   /**
    * Run one agent turn, rendering its event stream as it arrives.
@@ -252,6 +377,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || !session || turnActive) return;
+      // Each customer turn opens a new journey. Everything the turn causes — its
+      // tools, a checkout it stages, the order that follows and the provider event
+      // that settles it — joins that one lineage, so a judge follows a purchase
+      // rather than an afternoon of browsing (ADR 0032).
+      api.beginJourney();
       setStoreMessages((s) => [...s, { id: uid("m"), role: "user", text: trimmed }]);
 
       const replyId = uid("m");
@@ -305,7 +435,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
               break;
 
             case "ui": {
-              const component = asComponent(event.data.component, event.data.payload);
+              const component = asComponent(
+                SHOPPING_COMPONENTS, event.data.component, event.data.payload
+              );
               if (component) {
                 patch((m) => ({
                   ...m,
@@ -355,9 +487,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       // The turn may have staged a checkout or changed the cart through a path that
       // emitted no event; re-reading is cheap and keeps the panel honest.
       await refreshCart();
-      await refreshAudit();
+      await refreshEvidence();
     },
-    [shopperId, session, turnActive, refreshCart, refreshAudit]
+    [shopperId, session, turnActive, refreshCart, refreshEvidence]
   );
 
   const addToCart = useCallback(
@@ -367,9 +499,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         api.cartAdd(variantId, 1, `Customer added "${title}"`, cart.state_version)
       );
       if (updated) setCart(updated);
-      refreshAudit();
+      refreshEvidence();
     },
-    [session, cart.state_version, guarded, refreshAudit]
+    [session, cart.state_version, guarded, refreshEvidence]
   );
 
   const removeFromCart = useCallback(
@@ -377,9 +509,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       if (!session) return;
       const updated = await guarded(() => api.cartRemove(variantId));
       if (updated) setCart(updated);
-      refreshAudit();
+      refreshEvidence();
     },
-    [session, guarded, refreshAudit]
+    [session, guarded, refreshEvidence]
   );
 
   const updateQuantity = useCallback(
@@ -389,9 +521,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         api.cartUpdate(variantId, quantity, "Customer changed the quantity", cart.state_version)
       );
       if (updated) setCart(updated);
-      refreshAudit();
+      refreshEvidence();
     },
-    [session, cart.state_version, guarded, refreshAudit]
+    [session, cart.state_version, guarded, refreshEvidence]
   );
 
   /** Price the cart into an expiring preview. Holds no stock and moves no money. */
@@ -404,8 +536,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       setCheckoutError(errorMessage(e));
     }
-    refreshAudit();
-  }, [session, cart.lines.length, refreshAudit]);
+    refreshEvidence();
+  }, [session, cart.lines.length, refreshEvidence]);
 
   /**
    * The customer's confirmation. This is what creates the order and reserves the
@@ -428,9 +560,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setCheckoutError(errorMessage(e));
         await refreshCart();
       }
-      refreshAudit();
+      refreshEvidence();
     },
-    [session, refreshCart, refreshAudit]
+    [session, refreshCart, refreshEvidence]
   );
 
   const cancelStage = useCallback(() => {
@@ -451,9 +583,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         setCheckoutError(errorMessage(e));
       }
-      refreshAudit();
+      refreshEvidence();
     },
-    [session, refreshAudit]
+    [session, refreshEvidence]
   );
 
   /**
@@ -480,36 +612,153 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       if (!session) return undefined;
       const order = await guarded(() => api.orderStatus(orderId));
       if (order) setCheckout((c) => (c && c.order.order_id === orderId ? { ...c, order } : c));
-      refreshAudit();
+      refreshEvidence();
       return order;
     },
-    [session, guarded, refreshAudit]
+    [session, guarded, refreshEvidence]
   );
 
+  /**
+   * Run one merchant turn, rendering its event stream as it arrives.
+   *
+   * The same loop the storefront runs, over the same event types — the portal used to
+   * wait for one `message` frame carrying a finished reply. The one merchant-specific
+   * event is `change_update`: the agent staged something, and the approval queue is a
+   * different pane, so it is told directly rather than polled for.
+   */
   const sendMerchantMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || merchantId === "server") return;
+      if (!trimmed || !session || portalTurnActive) return;
       setPortalMessages((s) => [...s, { id: uid("m"), role: "user", text: trimmed }]);
-      const reply = await guarded(() => api.chatPortal(merchantId, trimmed));
-      if (reply) {
-        setPortalMessages((s) => [...s, { id: reply.id, role: "agent", text: reply.text, why: reply.why }]);
+
+      const replyId = uid("m");
+      setPortalMessages((s) => [...s, { id: replyId, role: "agent", text: "", typing: true }]);
+      setPortalTurnActive(true);
+      setProgress(null);
+
+      const patch = (update: (m: ChatMessage) => ChatMessage) =>
+        setPortalMessages((s) => s.map((m) => (m.id === replyId ? update(m) : m)));
+
+      let brokeForTool = false;
+      let staged = false;
+
+      try {
+        for await (const event of api.chatPortal(merchantId, trimmed)) {
+          switch (event.type) {
+            case "text_delta": {
+              const separator = brokeForTool && event.data.text.trim() ? "\n\n" : "";
+              brokeForTool = false;
+              patch((m) => ({
+                ...m,
+                text: m.text + (m.text ? separator : "") + event.data.text,
+                typing: false,
+              }));
+              break;
+            }
+
+            case "tool_call":
+              brokeForTool = true;
+              patch((m) => ({
+                ...m,
+                tools: [
+                  ...(m.tools ?? []),
+                  { id: event.data.id, tool: event.data.tool, label: event.data.label, status: "running" },
+                ],
+              }));
+              break;
+
+            case "tool_result":
+              patch((m) => ({
+                ...m,
+                tools: (m.tools ?? []).map((t) =>
+                  t.id === event.data.id
+                    ? { ...t, status: event.data.status, summary: event.data.summary, reason: event.data.reason }
+                    : t
+                ),
+              }));
+              setProgress(null);
+              break;
+
+            case "ui": {
+              const component = asComponent(
+                MERCHANT_COMPONENTS, event.data.component, event.data.payload
+              );
+              if (component) {
+                patch((m) => ({
+                  ...m,
+                  typing: false,
+                  components: [...(m.components ?? []), component],
+                }));
+              }
+              break;
+            }
+
+            case "change_update":
+              // A staged change, straight into the queue. It is `pending` and nothing
+              // else: the agent cannot produce any other status (ADR 0016).
+              staged = true;
+              break;
+
+            case "progress":
+              setProgress(event.data.message);
+              break;
+
+            case "error":
+              patch((m) => ({ ...m, typing: false, error: event.data.message }));
+              break;
+
+            case "turn_complete":
+              patch((m) => ({ ...m, typing: false }));
+              break;
+
+            default:
+              break;
+          }
+        }
+        setBackendError(null);
+      } catch (e) {
+        patch((m) => ({ ...m, typing: false, error: errorMessage(e) }));
+        setBackendError(errorMessage(e));
+      } finally {
+        setPortalTurnActive(false);
+        setProgress(null);
       }
-      const snap = await guarded(() => api.portalSnapshot(merchantId));
-      if (snap) setSnapshot(snap);
-      refreshAudit();
+
+      // Re-read rather than trust the event's copy: the queue shows the rows as the
+      // database holds them, which is what the operator is deciding on.
+      if (staged) await refreshChanges();
+      await refreshSnapshot();
+      await refreshEvidence();
     },
-    [merchantId, guarded, refreshAudit]
+    [merchantId, session, portalTurnActive, refreshChanges, refreshSnapshot, refreshEvidence]
   );
 
-  const decideApproval = useCallback(
-    async (id: string, decision: ApprovalStatus) => {
-      if (merchantId === "server") return;
-      const updated = await guarded(() => api.decide(id, merchantId, decision));
-      if (updated) setApprovals((s) => s.map((a) => (a.id === id ? updated : a)));
-      refreshAudit();
+  /**
+   * The operator's decision, and — on an approval — the application that follows it.
+   *
+   * A 409 here is the system working: the server re-read the record and refused to
+   * write, because the change went stale or a bound no longer holds. The reason is
+   * shown rather than swallowed, because it tells the operator what to do next.
+   */
+  const decideChange = useCallback(
+    async (id: string, decision: "approved" | "rejected") => {
+      if (!session) return;
+      setDecisionError(null);
+      try {
+        const updated = await api.decideChange(id, decision);
+        setChanges((s) => s.map((c) => (c.id === id ? updated : c)));
+        setBackendError(null);
+      } catch (e) {
+        setDecisionError(errorMessage(e));
+        // The change was marked failed server-side, so the queue is re-read to show
+        // that rather than leaving a row that still looks pending.
+        await refreshChanges();
+      }
+      await refreshSnapshot();
+      refreshEvidence();
     },
-    [merchantId, guarded, refreshAudit]
+    [session, refreshChanges, refreshSnapshot, refreshEvidence]
   );
 
   const value: AppState = {
@@ -538,12 +787,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     paymentReturned,
     dismissCheckout,
     portalMessages,
+    portalTurnActive,
     snapshot,
-    approvals,
+    changes,
+    decisionError,
     sendMerchantMessage,
-    decideApproval,
-    audit,
-    refreshAudit,
+    decideChange,
+    evidence,
+    refreshEvidence,
   };
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

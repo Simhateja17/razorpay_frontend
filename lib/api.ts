@@ -1,20 +1,83 @@
 import {
   AgentEvent,
   ApiProduct,
-  Approval,
-  ApprovalStatus,
-  AuditEntry,
   BusinessSnapshot,
   CartApi,
-  ChatReply,
   ConfirmedCheckout,
+  DataOrigin,
+  EvidenceFilters,
+  EvidenceRecord,
+  HealthReport,
+  Journey,
+  JourneySummary,
+  MerchantChange,
+  MetricsPayload,
   OrderApi,
   PaymentHandoff,
   Principal,
+  RecoveryQueue,
+  ResumedConversation,
   StagedCheckout,
 } from "@/lib/types";
 
 import { accessToken } from "@/lib/supabase";
+
+// One lineage per demo session (ADR 0032).
+//
+// The correlation id groups a *journey* — the browser action, the turn it starts,
+// the checkout it stages, and the provider event that settles it. It is minted by
+// the server on the first call and echoed back; sending it again on the next call
+// is what joins those calls into one story instead of four.
+//
+// The demo run id groups a whole visit, so an audit view can be narrowed to this
+// session and exclude every other one. Neither carries any authority: identity is
+// the bearer token and nothing else, which is exactly why these can live in the
+// browser at all.
+const CORRELATION_HEADER = "X-Cartisan-Correlation-Id";
+const DEMO_RUN_HEADER = "X-Cartisan-Demo-Run";
+const DEMO_RUN_KEY = "cartisan.demo_run_id";
+
+let currentCorrelationId: string | null = null;
+
+/** The demo run for this browser session, created once and kept for the tab. */
+function demoRunId(): string {
+  if (typeof window === "undefined") return "";
+  let value = window.sessionStorage.getItem(DEMO_RUN_KEY);
+  if (!value) {
+    value = `demo:${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}`;
+    window.sessionStorage.setItem(DEMO_RUN_KEY, value);
+  }
+  return value;
+}
+
+function lineageHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const run = demoRunId();
+  if (run) headers[DEMO_RUN_HEADER] = run;
+  if (currentCorrelationId) headers[CORRELATION_HEADER] = currentCorrelationId;
+  return headers;
+}
+
+function rememberLineage(res: Response): void {
+  const id = res.headers.get(CORRELATION_HEADER);
+  if (id) currentCorrelationId = id;
+}
+
+/**
+ * Start a new journey.
+ *
+ * Called when the customer begins something genuinely new — a fresh chat turn, a
+ * checkout — so that a whole afternoon of browsing does not collapse into one
+ * enormous "journey" a judge cannot read.
+ */
+function beginJourney(): void {
+  currentCorrelationId = null;
+}
+
+/** The journey currently being recorded, for a UI that wants to link to it. */
+function currentJourney(): string | null {
+  return currentCorrelationId;
+}
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
@@ -37,11 +100,17 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${BASE}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...(await authHeaders()), ...(init?.headers ?? {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+        ...lineageHeaders(),
+        ...(init?.headers ?? {}),
+      },
     });
   } catch {
     throw new ApiError(`Could not reach the Cartisan backend at ${BASE}. Is it running?`);
   }
+  rememberLineage(res);
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -61,12 +130,13 @@ async function* sseStream(path: string, body: unknown): AsyncGenerator<{ event: 
   try {
     res = await fetch(`${BASE}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      headers: { "Content-Type": "application/json", ...(await authHeaders()), ...lineageHeaders() },
       body: JSON.stringify(body),
     });
   } catch {
     throw new ApiError(`Could not reach the Cartisan backend at ${BASE}. Is it running?`);
   }
+  rememberLineage(res);
   if (!res.ok || !res.body) {
     let detail = res.statusText;
     try {
@@ -123,22 +193,34 @@ async function* chatStorefront(
   }
 }
 
-/** The portal still runs the pre-Phase-5 shape: deltas, then one `message`. */
-async function chatPortal(conversationId: string, message: string): Promise<ChatReply> {
-  let payload: ChatReply | null = null;
+/**
+ * One merchant turn, as the same `AgentEvent` stream the storefront speaks.
+ *
+ * The portal used to receive one `message` frame carrying a whole reply and an
+ * optional approval. It now receives the turn as it happens — the reads the agent
+ * made, the components it rendered, and a `change_update` when it staged something.
+ * Nothing in this stream can approve or apply a change; that is a separate,
+ * operator-authenticated call (ADR 0016).
+ */
+async function* chatPortal(
+  conversationId: string,
+  message: string
+): AsyncGenerator<AgentEvent> {
   for await (const frame of sseStream("/chat/portal", {
     conversation_id: conversationId,
     message,
   })) {
-    if (frame.event === "message") payload = frame.data as ChatReply;
+    if (frame.event === "done") return;
+    yield { type: frame.event, data: frame.data } as AgentEvent;
   }
-  if (!payload) throw new ApiError("Unexpected response from the portal chat endpoint.");
-  return payload;
 }
 
 export const api = {
   chatStorefront,
   chatPortal,
+  beginJourney,
+  currentJourney,
+  demoRunId,
 
   me: () => req<Principal>("/me"),
 
@@ -185,6 +267,17 @@ export const api = {
       body: JSON.stringify({ stage_id: stageId, idempotency_key: crypto.randomUUID() }),
     }),
 
+  // What a reconnecting client should show. The transcript comes from the durable
+  // `turns` table, so it survives a reload and a restart of the backend (ADR 0029).
+  resumeStorefront: (conversationId: string) =>
+    req<ResumedConversation>(
+      `/chat/storefront/resume?conversation_id=${encodeURIComponent(conversationId)}`
+    ),
+  resumePortal: (conversationId: string) =>
+    req<ResumedConversation>(
+      `/chat/portal/resume?conversation_id=${encodeURIComponent(conversationId)}`
+    ),
+
   orders: () => req<OrderApi[]>("/orders"),
   orderStatus: (orderId: string) => req<OrderApi>(`/orders/${encodeURIComponent(orderId)}`),
   // A retry is a new attempt on the SAME order, never a second order.
@@ -196,15 +289,91 @@ export const api = {
   paymentRedirectReturned: (orderId: string) =>
     req<OrderApi>(`/orders/${encodeURIComponent(orderId)}/redirect`, { method: "POST" }),
 
-  portalSnapshot: (sessionId: string) => req<BusinessSnapshot>(`/portal/snapshot?session_id=${encodeURIComponent(sessionId)}`),
-  approvals: () => req<Approval[]>("/portal/approvals"),
-  decide: (changeId: string, sessionId: string, decision: ApprovalStatus) =>
-    req<Approval>(`/portal/approvals/${encodeURIComponent(changeId)}/decision`, {
+  // The merchant surface. Every call below needs an operator principal; the token
+  // says who that is, and no session or operator id is ever sent in a body.
+  portalSnapshot: (windowDays = 7) =>
+    req<BusinessSnapshot>(`/portal/snapshot?window_days=${windowDays}`),
+  portalMetrics: (metric: string, windowDays = 30, groupBy?: string) =>
+    req<MetricsPayload>(
+      `/portal/metrics?metric=${encodeURIComponent(metric)}&window_days=${windowDays}` +
+        (groupBy ? `&group_by=${encodeURIComponent(groupBy)}` : "")
+    ),
+  changes: () => req<MerchantChange[]>("/portal/changes"),
+  // Approving is also the instruction to apply. The server re-reads the record and
+  // re-checks the bounds first, so this can come back 409 with the reason — a stale
+  // proposal or a bound that no longer holds. Nothing is written in that case.
+  decideChange: (changeId: string, decision: "approved" | "rejected", note?: string) =>
+    req<MerchantChange>(`/portal/changes/${encodeURIComponent(changeId)}/decision`, {
       method: "POST",
-      body: JSON.stringify({ session_id: sessionId, decision }),
+      body: JSON.stringify({ decision, note: note ?? null }),
     }),
 
-  audit: (agent?: "shopping" | "merchant") => req<AuditEntry[]>(`/audit${agent ? `?agent=${agent}` : ""}`),
+  // The evidence ledger. `/audit` and the flat table behind it are gone: they could
+  // not be filtered by principal, carried no correlation and no origin, and so could
+  // only ever show a judge every session at once (ADR 0023).
+  myEvidence: (params: { demoRunId?: string; correlationId?: string; limit?: number } = {}) =>
+    req<EvidenceRecord[]>(`/evidence${query({
+      demo_run_id: params.demoRunId,
+      correlation_id: params.correlationId,
+      limit: params.limit,
+    })}`),
+  myJourney: (correlationId: string) =>
+    req<Journey>(`/evidence/journeys/${encodeURIComponent(correlationId)}`),
+
+  // The operator's views. These take a principal as a filter rather than forcing
+  // their own, because an operator acts on the whole store.
+  portalEvidence: (params: {
+    actorId?: string;
+    demoRunId?: string;
+    correlationId?: string;
+    origin?: DataOrigin;
+    surface?: string;
+    outcome?: string;
+    actorType?: string;
+    action?: string;
+    limit?: number;
+  } = {}) =>
+    req<EvidenceRecord[]>(`/portal/evidence${query({
+      actor_id: params.actorId,
+      demo_run_id: params.demoRunId,
+      correlation_id: params.correlationId,
+      origin: params.origin,
+      surface: params.surface,
+      outcome: params.outcome,
+      actor_type: params.actorType,
+      action: params.action,
+      limit: params.limit,
+    })}`),
+  evidenceFilters: (demoRunId?: string) =>
+    req<EvidenceFilters>(`/portal/evidence/filters${query({ demo_run_id: demoRunId })}`),
+  journeys: (params: { actorId?: string; demoRunId?: string; origin?: DataOrigin; limit?: number } = {}) =>
+    req<JourneySummary[]>(`/portal/evidence/journeys${query({
+      actor_id: params.actorId,
+      demo_run_id: params.demoRunId,
+      origin: params.origin,
+      limit: params.limit,
+    })}`),
+  journey: (correlationId: string) =>
+    req<Journey>(`/portal/evidence/journeys/${encodeURIComponent(correlationId)}`),
+
+  health: (hours = 24, demoRunId?: string) =>
+    req<HealthReport>(`/portal/health${query({ hours, demo_run_id: demoRunId })}`),
+
+  // Reading what is stuck needs an operator. Acting on it needs the operations
+  // token, which the browser does not have and is not given: a recovery control is
+  // host-triggered by design, so the UI shows what is wrong and names the command
+  // that fixes it (ADR 0005).
+  recoveryQueue: () => req<RecoveryQueue>("/portal/recovery"),
 };
+
+/** Build a query string from the params that were actually supplied. */
+function query(params: Record<string, string | number | undefined | null>): string {
+  const pairs = Object.entries(params).filter(
+    ([, value]) => value !== undefined && value !== null && value !== ""
+  );
+  return pairs.length
+    ? `?${pairs.map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&")}`
+    : "";
+}
 
 export { ApiError };

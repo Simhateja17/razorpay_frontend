@@ -34,10 +34,12 @@ export default function SignInGate({ children }: { children: React.ReactNode }) 
           <div className="w-[34px] h-[34px] rounded-[9px] bg-accent text-white flex items-center justify-center text-[15px] font-semibold">
             C
           </div>
-          <h1 className="mt-1 text-[24px] font-semibold tracking-tight">Sign in to shop</h1>
+          <h1 className="mt-1 text-[24px] font-semibold tracking-tight">Sign in to Cartisan</h1>
           <p className="m-0 text-[14px] text-ink-muted leading-relaxed">
-            Your cart and orders belong to your account, not to this browser tab. Pick a demo
-            identity to continue — sign in again from anywhere and the same cart is waiting.
+            Carts, orders and the merchant surfaces all belong to an account, not to this
+            browser tab. Pick a demo identity to continue — sign in again from anywhere and
+            the same cart is waiting. The operator account is the one that can open the
+            portal and the operations views.
           </p>
         </div>
 

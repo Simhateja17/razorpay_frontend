@@ -5,11 +5,15 @@ import MessageList from "@/components/storefront/MessageList";
 import ChatInput from "@/components/storefront/ChatInput";
 import KpiStrip from "@/components/portal/KpiStrip";
 import ApprovalQueue from "@/components/portal/ApprovalQueue";
+import MerchantComponent from "@/components/portal/MerchantComponent";
+import SignInGate from "@/components/shared/SignInGate";
 
+// Openers that match what the merchant surface can actually do: read the store's own
+// records, and queue a change for approval. "Fashion pricing" was a legacy catalogue.
 const SUGGESTED_PROMPTS = [
   "How are sales looking this week?",
-  "Anything I should worry about in inventory?",
-  "What would you change about Fashion pricing?",
+  "Anything I should restock?",
+  "How is the Monsoon campaign doing?",
 ];
 
 export default function PortalPage() {
@@ -17,6 +21,7 @@ export default function PortalPage() {
   const empty = portalMessages.length === 0;
 
   return (
+    <SignInGate>
     <div className="h-full flex flex-col">
       <KpiStrip snapshot={snapshot} />
       <div className="flex-1 min-h-0 flex">
@@ -31,7 +36,7 @@ export default function PortalPage() {
                     </div>
                     <h1 className="mt-2 text-[24px] font-semibold tracking-tight">How can I help run the store?</h1>
                     <p className="m-0 text-[14px] text-ink-muted max-w-[52ch] leading-relaxed">
-                      Ask about sales, inventory, or pricing. Anything I&apos;d change goes into the approval queue on the right - nothing applies until you approve it.
+                      Ask about sales, inventory, or pricing. I read the store&apos;s own records and show the formula behind every figure. Anything I&apos;d change is queued on the right — I can propose it and nothing more; it applies only when you approve it.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-1">
@@ -47,7 +52,7 @@ export default function PortalPage() {
                   </div>
                 </div>
               )}
-              <MessageList messages={portalMessages} />
+              <MessageList messages={portalMessages} renderComponent={MerchantComponent} />
             </div>
           </div>
           <ChatInput onSend={sendMerchantMessage} placeholder="Ask about sales, inventory, pricing…" />
@@ -55,5 +60,6 @@ export default function PortalPage() {
         <ApprovalQueue />
       </div>
     </div>
+    </SignInGate>
   );
 }

@@ -12,9 +12,14 @@ export const supabase: SupabaseClient | null =
 export const supabaseConfigured = Boolean(supabase);
 
 /** Pre-created demo identities, so a judge can sign in without a signup flow. */
+// The pre-created demo accounts. The role behind each one lives in Supabase app
+// metadata, which a client cannot set: signing in as Maya does not *make* the session
+// an operator, it signs into an account the server already knows is one (ADR 0010).
+// Create them with `scripts/seed_demo_identities.py`.
 export const DEMO_IDENTITIES = [
   { label: "Ira Menon — shopper", email: "ira@example.com", password: "cartisan-demo-shopper" },
   { label: "Dev Rao — shopper", email: "dev@example.com", password: "cartisan-demo-shopper" },
+  { label: "Maya Iyer — merchant operator", email: "maya@example.com", password: "cartisan-demo-operator" },
 ];
 
 export async function accessToken(): Promise<string | null> {

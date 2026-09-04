@@ -7,7 +7,8 @@ import { useAppState } from "@/lib/store/AppState";
 const TABS = [
   { href: "/storefront", label: "Storefront" },
   { href: "/portal", label: "Merchant portal" },
-  { href: "/audit", label: "Audit trail" },
+  { href: "/evidence", label: "Evidence" },
+  { href: "/operations", label: "Operations" },
 ];
 
 export default function HeaderNav() {

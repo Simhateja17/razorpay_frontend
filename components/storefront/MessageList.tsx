@@ -1,9 +1,20 @@
 "use client";
 
-import { ChatMessage, ToolTrace } from "@/lib/types";
+import { ChatMessage, RenderedComponent, ToolTrace } from "@/lib/types";
 import AgentComponent from "./AgentComponent";
 
-export default function MessageList({ messages }: { messages: ChatMessage[] }) {
+/**
+ * The transcript, on both surfaces. The message shape and the tool trail are the same
+ * whichever agent produced them; what differs is which components the surface knows
+ * how to draw, so the renderer is a parameter rather than a branch in here.
+ */
+export default function MessageList({
+  messages,
+  renderComponent: Component = AgentComponent,
+}: {
+  messages: ChatMessage[];
+  renderComponent?: (props: { component: RenderedComponent }) => React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-6">
       {messages.map((m) => (
@@ -51,7 +62,7 @@ export default function MessageList({ messages }: { messages: ChatMessage[] }) {
           {/* Components render in the order the agent emitted them, so the reading
               order on screen matches the order it decided to show things in. */}
           {m.components?.map((component, index) => (
-            <AgentComponent key={`${m.id}-${index}`} component={component} />
+            <Component key={`${m.id}-${index}`} component={component} />
           ))}
         </div>
       ))}
