@@ -32,6 +32,7 @@ export default function StorefrontPage() {
     cart, stage, checkout, lastCartAddAt } = useAppState();
   const [chatOpen, setChatOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [recoveryDetailsOpen, setRecoveryDetailsOpen] = useState(false);
   const scrollRef = useAutoScroll(storeMessages);
 
   // Adding a line slides the cart in — the confirmation that the add landed. It is
@@ -74,7 +75,21 @@ export default function StorefrontPage() {
       : "Your order is waiting for you";
   const showRecovery = () => {
     setChatOpen(true);
+    const visibleCheckout = document.getElementById("active-checkout");
+    if (visibleCheckout) {
+      visibleCheckout.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setRecoveryDetailsOpen(true);
     requestAnimationFrame(() => document.getElementById("active-checkout")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  };
+  const startFreshChat = () => {
+    setRecoveryDetailsOpen(false);
+    startNewShopperChat();
+  };
+  const selectChat = (conversationId: string) => {
+    setRecoveryDetailsOpen(false);
+    selectShopperChat(conversationId);
   };
 
   return <RoleGate role="customer">
@@ -139,7 +154,7 @@ export default function StorefrontPage() {
             </div>
             <div className="flex items-center gap-2">
               <ConversationSwitcher conversations={chatHistory} activeConversationId={shopperConversationId} turnActive={turnActive}
-                onNewChat={startNewShopperChat} onSelectChat={selectShopperChat} />
+                onNewChat={startFreshChat} onSelectChat={selectChat} />
               <button onClick={() => setChatOpen(false)} aria-label="Close assistant"
                 className="border border-border rounded-md px-2.5 py-1.5 text-[12px] text-ink-muted hover:border-accent hover:text-accent transition-colors">
                 Back to browsing
@@ -157,7 +172,8 @@ export default function StorefrontPage() {
           <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-5">
             <div className="max-w-[720px] mx-auto">
               {!storeMessages.length && <p className="text-sm text-ink-muted py-4">Ask for recommendations, compare products, or tell me what you need. Your conversation stays here as you browse.</p>}
-              <MessageList messages={storeMessages} /><StagePanel /><PaymentPanel />
+              <MessageList messages={storeMessages} /><StagePanel />
+              {recoveryDetailsOpen && <PaymentPanel />}
               {progress && <p role="status" className="text-xs text-ink-muted mt-2">{progress}</p>}
             </div>
           </div>
