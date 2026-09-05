@@ -183,11 +183,13 @@ async function* sseStream(path: string, body: unknown): AsyncGenerator<{ event: 
  */
 async function* chatStorefront(
   conversationId: string,
-  message: string
+  message: string,
+  variantId?: string | null
 ): AsyncGenerator<AgentEvent> {
   for await (const frame of sseStream("/chat/storefront", {
     conversation_id: conversationId,
     message,
+    variant_id: variantId ?? null,
   })) {
     if (frame.event === "done") return;
     yield { type: frame.event, data: frame.data } as AgentEvent;
@@ -226,6 +228,7 @@ export const api = {
   me: () => req<Principal>("/me"),
 
   catalog: () => req<ApiProduct[]>("/catalog"),
+  productDetails: (variantId: string) => req<import("@/lib/types").ProductDetails>(`/catalog/variants/${encodeURIComponent(variantId)}`),
 
   // Cart calls name no owner and no product — only a variant, which is the id the
   // cart, the stage and the order all share. `expectedVersion` makes a mutation

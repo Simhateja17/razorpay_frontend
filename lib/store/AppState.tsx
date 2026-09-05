@@ -89,6 +89,8 @@ interface AppState {
   checkoutError: string | null;
   confirmingCheckout: boolean;
   sendShopperMessage: (text: string) => Promise<void>;
+  browsingVariantId: string | null;
+  setBrowsingVariantId: (id: string | null) => void;
   addToCart: (variantId: string, title: string) => Promise<void>;
   removeFromCart: (variantId: string) => Promise<void>;
   updateQuantity: (variantId: string, quantity: number) => Promise<void>;
@@ -136,6 +138,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(!supabaseConfigured);
 
   const [storeMessages, setStoreMessages] = useState<ChatMessage[]>([]);
+  const [browsingVariantId, setBrowsingVariantId] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ConversationSummary[]>([]);
   const [cart, setCart] = useState<CartApi>(EMPTY_CART);
   const [turnActive, setTurnActive] = useState(false);
@@ -512,7 +515,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       let brokeForTool = false;
 
       try {
-        for await (const event of api.chatStorefront(shopperId, trimmed)) {
+        for await (const event of api.chatStorefront(shopperId, trimmed, browsingVariantId)) {
           switch (event.type) {
             case "text_delta": {
               const separator = brokeForTool && event.data.text.trim() ? "\n\n" : "";
@@ -604,7 +607,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       await refreshEvidence();
       await refreshChatHistory();
     },
-    [shopperId, session, turnActive, refreshCart, refreshEvidence, refreshChatHistory]
+    [shopperId, session, turnActive, browsingVariantId, refreshCart, refreshEvidence, refreshChatHistory]
   );
 
   const addToCart = useCallback(
@@ -947,6 +950,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     checkoutError,
     confirmingCheckout,
     sendShopperMessage,
+    browsingVariantId,
+    setBrowsingVariantId,
     addToCart,
     removeFromCart,
     updateQuantity,

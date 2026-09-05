@@ -17,7 +17,7 @@ const GAP_MS = 400;
 function useTypewriterPlaceholder(examples: string[], enabled: boolean) {
   const [text, setText] = useState("");
   const examplesRef = useRef(examples);
-  examplesRef.current = examples;
+  useEffect(() => { examplesRef.current = examples; }, [examples]);
 
   useEffect(() => {
     if (!enabled || examplesRef.current.length === 0) {

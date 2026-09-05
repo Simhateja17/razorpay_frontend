@@ -33,6 +33,15 @@ export interface ApiProduct {
   variants: ApiVariant[];
 }
 
+export interface ProductDetails extends ApiVariant {
+  product_id: string;
+  brand: string;
+  category: string | null;
+  description: string;
+  specs: Record<string, string>;
+  requirements: string[];
+}
+
 // Seeded history, a live app purchase, and provider test-mode evidence stay
 // visibly distinct wherever they are shown (ADR 0032).
 export type DataOrigin = "seeded" | "live_app" | "razorpay_test";

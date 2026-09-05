@@ -1,5 +1,5 @@
 "use client";
-
+import { useState } from "react";
 import { useAppState } from "@/lib/store/AppState";
 import { useAutoScroll } from "@/lib/useAutoScroll";
 import MessageList from "@/components/storefront/MessageList";
@@ -8,118 +8,38 @@ import CartSidebar from "@/components/storefront/CartSidebar";
 import StagePanel from "@/components/storefront/StagePanel";
 import PaymentPanel from "@/components/storefront/PaymentPanel";
 import ConversationSwitcher from "@/components/storefront/ConversationSwitcher";
+import CatalogBrowser from "@/components/storefront/CatalogBrowser";
 import RoleGate from "@/components/shared/RoleGate";
 
-// The catalog is consumer electronics and smart-lifestyle accessories only — no
-// laptops or phones are sold here (backend/marketplace_backend/seed/domain.py:49-59,
-// 70-330). Phones and laptops appear only as compatibility targets for cases and
-// chargers, so every example below names a real category or line from that catalog.
-const SUGGESTED_PROMPTS = [
-  "Find me wireless earbuds under ₹5,000",
-  "Compare the chargers you have under ₹3,000",
-  "What's in my cart?",
-];
-
-// One example per thing the shopping agent can actually do — search, compare, cart,
-// preferences, orders, policies, shipping, checkout — cycled in the input as a live
-// demonstration of scope, not just a static hint. Every product and category named
-// here is real (Personal Audio, Home Audio, Power & Cables, Wearables, Smart Home,
-// Computing, Home Comfort, Cases & Protection); nothing implies the store sells
-// laptops or phones, since it doesn't.
-const CAPABILITY_EXAMPLES = [
-  "Find me wireless earbuds under ₹5,000",
-  "Compare the chargers you have under ₹3,000",
-  "Tell me more about the Over-Ear Headphones",
-  "Add the mechanical keyboard to my cart",
-  "What's in my cart?",
-  "Remove the power bank from my cart",
-  "Remember I prefer wired over wireless",
-  "Where's my last order?",
-  "Show my order history",
-  "What's your return policy?",
-  "How fast can this ship to Mumbai?",
-  "Help me put together a smart home starter kit",
-  "Checkout with my saved card",
-  "What can you help me with?",
-];
-
 export default function StorefrontPage() {
-  const {
-    storeMessages,
-    sendShopperMessage,
-    turnActive,
-    progress,
-    shopperConversationId,
-    chatHistory,
-    startNewShopperChat,
-    selectShopperChat,
-  } = useAppState();
-  const empty = storeMessages.length === 0;
+  const { storeMessages, sendShopperMessage, turnActive, progress, shopperConversationId,
+    chatHistory, startNewShopperChat, selectShopperChat, browsingVariantId, setBrowsingVariantId,
+    cart, stage, checkout } = useAppState();
+  const [chatOpen, setChatOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
   const scrollRef = useAutoScroll(storeMessages);
-
-  return (
-    <RoleGate role="customer">
-    <div className="h-full flex">
+  const expanded = chatOpen || !!stage || !!checkout;
+  const ask = (text: string) => { setChatOpen(true); void sendShopperMessage(text); };
+  return <RoleGate role="customer">
+    <div className="h-full flex min-w-0 relative">
       <main className="flex-1 min-w-0 flex flex-col bg-bg">
-        <div className="flex-none px-6 pt-3">
-          <div className="max-w-[720px] mx-auto flex items-center justify-end">
-            <ConversationSwitcher
-              conversations={chatHistory}
-              activeConversationId={shopperConversationId}
-              turnActive={turnActive}
-              onNewChat={startNewShopperChat}
-              onSelectChat={selectShopperChat}
-            />
+        <div className="flex-none flex justify-end px-4 py-2 border-b border-border-soft"><button className="text-sm" onClick={() => setCartOpen(!cartOpen)} aria-expanded={cartOpen}>Your cart ({cart.lines.reduce((n, l) => n + l.quantity, 0)}) {cartOpen ? "−" : "+"}</button></div>
+        <div className="flex-1 min-h-0 overflow-y-auto"><CatalogBrowser onAsk={ask} /></div>
+        <section aria-label="Shopping assistant" className="flex-none border-t border-border bg-white shadow-[0_-4px_24px_#00000008]">
+          <div className="px-4 py-2 flex items-center justify-between gap-2">
+            <button onClick={() => setChatOpen(!chatOpen)} aria-expanded={expanded} aria-controls="shopping-transcript" className="text-sm font-semibold">✦ Shopping assistant {expanded ? "⌄" : "⌃"}</button>
+            <ConversationSwitcher conversations={chatHistory} activeConversationId={shopperConversationId} turnActive={turnActive} onNewChat={() => { startNewShopperChat(); setChatOpen(true); }} onSelectChat={id => { selectShopperChat(id); setChatOpen(true); }} />
           </div>
-        </div>
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pt-7 pb-2">
-          <div className="max-w-[720px] mx-auto flex flex-col gap-6">
-            {empty && (
-              <div className="pt-11 pb-2 flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <div className="w-[34px] h-[34px] rounded-[9px] bg-accent text-white flex items-center justify-center text-[15px] font-semibold">
-                    C
-                  </div>
-                  <h1 className="mt-2 text-[27px] font-semibold tracking-tight">What are you shopping for?</h1>
-                  <p className="m-0 text-[14.5px] text-ink-muted max-w-[46ch] leading-relaxed">
-                    Tell the shopping agent in plain words. It searches the marketplace, builds your cart, and hands you off to Razorpay to pay. Every action it takes is logged in the audit trail.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {SUGGESTED_PROMPTS.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => sendShopperMessage(p)}
-                      className="bg-white border border-border rounded-full px-3.5 py-2 text-[13.5px] text-ink hover:border-accent hover:text-accent transition-colors text-left"
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <MessageList messages={storeMessages} />
-            {/* The staged preview and the payment handoff live below the transcript
-                rather than inside a message: they are the current state of one
-                checkout, not something the agent said at a moment in time. */}
-            <StagePanel />
-            <PaymentPanel />
-            {progress && (
-              <span className="ml-9 text-[12px] text-ink-faint font-mono" aria-live="polite">
-                {progress}
-              </span>
-            )}
-          </div>
-        </div>
-        <ChatInput
-          onSend={sendShopperMessage}
-          placeholder={turnActive ? "Working…" : "Ask the shopping agent…"}
-          examples={CAPABILITY_EXAMPLES}
-          busy={turnActive}
-        />
+          {browsingVariantId && <div className="px-4 pb-2 text-xs text-accent flex gap-3"><span>Asking about the selected product</span><button onClick={() => setBrowsingVariantId(null)} className="underline">Clear</button></div>}
+          {expanded && <div id="shopping-transcript" ref={scrollRef} className="h-[38dvh] overflow-y-auto px-4 pb-3"><div className="max-w-[720px] mx-auto">
+            {!storeMessages.length && <p className="text-sm text-ink-muted py-4">Ask for recommendations, compare products, or tell me what you need. Your conversation stays here as you browse.</p>}
+            <MessageList messages={storeMessages} /><StagePanel /><PaymentPanel />
+            {progress && <p role="status" className="text-xs text-ink-muted">{progress}</p>}
+          </div></div>}
+          <ChatInput onSend={ask} placeholder={turnActive ? "Working…" : browsingVariantId ? "Ask about this product or find an alternative…" : "Ask anything about the collection…"} busy={turnActive} />
+        </section>
       </main>
-      <CartSidebar />
+      {cartOpen && <div className="absolute inset-y-0 right-0 z-20 flex max-w-full shadow-xl lg:static lg:shadow-none"><button aria-label="Close cart" className="absolute right-2 top-12 z-10 rounded bg-white border px-2" onClick={() => setCartOpen(false)}>×</button><CartSidebar /></div>}
     </div>
-    </RoleGate>
-  );
+  </RoleGate>;
 }
