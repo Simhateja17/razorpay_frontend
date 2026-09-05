@@ -4,6 +4,7 @@ import { RenderedComponent } from "@/lib/types";
 import { formatMinor } from "@/lib/format";
 import { useAppState } from "@/lib/store/AppState";
 import PresentedCardView from "./PresentedCardView";
+import { CheckoutStatusCard } from "./PaymentPanel";
 
 /**
  * Renders one component the agent emitted as a `ui` event.
@@ -190,8 +191,13 @@ function StagePreview({
 }: {
   payload: Extract<RenderedComponent, { kind: "checkout" }>["payload"];
 }) {
-  const { confirmAndPay, checkoutError, checkout } = useAppState();
-  const alreadyConfirmed = checkout?.order.status !== undefined;
+  const { confirmAndPay, checkoutError, checkout, checkoutStageId, confirmingCheckout } =
+    useAppState();
+
+  // Once this stage has been confirmed, this card *is* the order: it becomes the
+  // handoff, then the paid receipt, in place. A second card below it would be the
+  // same checkout told twice.
+  if (checkout && checkoutStageId === payload.stage_id) return <CheckoutStatusCard />;
 
   return (
     <section className="ml-9 max-w-[430px] bg-white border border-[#cfd9d5] rounded-xl overflow-hidden shadow-sm">
@@ -240,10 +246,10 @@ function StagePreview({
       <div className="px-4 pb-4 flex flex-col gap-2">
         <button
           onClick={() => confirmAndPay(payload.stage_id)}
-          disabled={payload.state !== "staged" || alreadyConfirmed}
+          disabled={payload.state !== "staged" || confirmingCheckout}
           className="w-full bg-accent text-white border-none rounded-lg py-3 text-[14px] font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
         >
-          Pay {payload.total} via Razorpay
+          {confirmingCheckout ? "Confirming…" : `Pay ${payload.total} via Razorpay`}
         </button>
         {checkoutError && <span className="text-[12px] text-danger">{checkoutError}</span>}
         <span className="text-[11px] text-ink-faint text-center leading-relaxed">

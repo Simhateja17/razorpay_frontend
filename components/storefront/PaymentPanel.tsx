@@ -42,7 +42,29 @@ function OrderProvenance({ order }: { order: OrderApi }) {
     </div>
   );
 }
+/**
+ * Where the outcome of the current checkout belongs.
+ *
+ * When the agent presented the checkout mid-conversation, its own card in the
+ * transcript turns into this — the review card becomes the paid card, rather than a
+ * second card appearing underneath it. A checkout the customer staged from the cart
+ * has no card of its own, so it renders here at the foot of the transcript instead.
+ */
 export default function PaymentPanel() {
+  const { checkout, checkoutStageId, storeMessages } = useAppState();
+  const presentedInTranscript =
+    checkoutStageId !== null &&
+    storeMessages.some((message) =>
+      message.components?.some(
+        (component) =>
+          component.kind === "checkout" && component.payload.stage_id === checkoutStageId,
+      ),
+    );
+  if (!checkout || presentedInTranscript) return null;
+  return <CheckoutStatusCard />;
+}
+
+export function CheckoutStatusCard() {
   const { checkout, refreshOrder, retryPayment, paymentReturned, checkoutError, dismissCheckout } =
     useAppState();
   const [busy, setBusy] = useState<"check" | "retry" | null>(null);

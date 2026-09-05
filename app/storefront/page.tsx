@@ -29,10 +29,14 @@ const OPENERS = [
 export default function StorefrontPage() {
   const { storeMessages, sendShopperMessage, turnActive, progress, shopperConversationId,
     chatHistory, startNewShopperChat, selectShopperChat, browsingVariantId, setBrowsingVariantId,
-    cart, stage, checkout } = useAppState();
+    cart, stage, checkout, lastCartAddAt } = useAppState();
   const [chatOpen, setChatOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const scrollRef = useAutoScroll(storeMessages);
+
+  // Adding a line slides the cart in — the confirmation that the add landed. It is
+  // driven by the explicit-add signal, so browsing or an agent turn never opens it.
+  useEffect(() => { if (lastCartAddAt) setCartOpen(true); }, [lastCartAddAt]);
 
   // A staged checkout or a live payment is the assistant talking — surface it even if the
   // shopper never opened the panel themselves.
@@ -40,11 +44,15 @@ export default function StorefrontPage() {
 
   // Escape closes the conversation without losing it; reopening shows the same transcript.
   useEffect(() => {
-    if (!chatOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setChatOpen(false); };
+    if (!chatOpen && !cartOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (cartOpen) setCartOpen(false);
+      else setChatOpen(false);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [chatOpen]);
+  }, [chatOpen, cartOpen]);
 
   const ask = (text: string) => { setChatOpen(true); void sendShopperMessage(text); };
   const cartCount = cart.lines.reduce((n, l) => n + l.quantity, 0);
@@ -128,7 +136,14 @@ export default function StorefrontPage() {
         </div>
       )}
 
-      {cartOpen && <div className="absolute inset-y-0 right-0 z-40 flex max-w-full shadow-xl lg:static lg:shadow-none"><button aria-label="Close cart" className="absolute right-2 top-12 z-10 rounded bg-white border px-2" onClick={() => setCartOpen(false)}>×</button><CartSidebar /></div>}
+      {/* Always a drawer over the page — the same panel the shopper sees slide in on an add. */}
+      {cartOpen && (
+        <div className="slide-in-right absolute inset-y-0 right-0 z-40 flex max-w-full shadow-[-8px_0_28px_#00000014]">
+          <button aria-label="Close cart" onClick={() => setCartOpen(false)}
+            className="absolute right-3 top-3 z-10 rounded-md border border-border bg-white px-2 py-0.5 text-ink-muted hover:text-ink">×</button>
+          <CartSidebar />
+        </div>
+      )}
     </div>
   </RoleGate>;
 }

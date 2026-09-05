@@ -92,6 +92,17 @@ interface AppState {
   browsingVariantId: string | null;
   setBrowsingVariantId: (id: string | null) => void;
   addToCart: (variantId: string, title: string) => Promise<void>;
+  /**
+   * Bumped only when the shopper explicitly adds a line — the signal the storefront
+   * uses to slide the cart in. A server-side cart change during an agent turn does
+   * not bump it, so the panel never opens on its own.
+   */
+  lastCartAddAt: number;
+  /**
+   * The stage that produced the current `checkout`, so the card that presented that
+   * stage can show the outcome in place instead of a second card appearing below it.
+   */
+  checkoutStageId: string | null;
   removeFromCart: (variantId: string) => Promise<void>;
   updateQuantity: (variantId: string, quantity: number) => Promise<void>;
   beginCheckout: () => Promise<void>;
@@ -141,6 +152,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [browsingVariantId, setBrowsingVariantId] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ConversationSummary[]>([]);
   const [cart, setCart] = useState<CartApi>(EMPTY_CART);
+  const [lastCartAddAt, setLastCartAddAt] = useState(0);
+  const [checkoutStageId, setCheckoutStageId] = useState<string | null>(null);
   const [turnActive, setTurnActive] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [stage, setStage] = useState<StagedCheckout | null>(null);
@@ -616,7 +629,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const updated = await guarded(() =>
         api.cartAdd(variantId, 1, `Customer added "${title}"`, cart.state_version)
       );
-      if (updated) setCart(updated);
+      if (updated) {
+        setCart(updated);
+        setLastCartAddAt(Date.now());
+      }
       refreshEvidence();
     },
     [session, cart.state_version, guarded, refreshEvidence]
@@ -672,6 +688,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       try {
         const confirmed = await api.confirmCheckout(stageId);
         setCheckout(confirmed);
+        setCheckoutStageId(stageId);
         setStage(null);
         // The cart was retired server-side along with the order.
         setCart((current) => ({ ...current, lines: [], subtotal_minor: 0 }));
@@ -742,6 +759,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       try {
         const confirmed = await api.confirmCheckout(stageId);
         setCheckout(confirmed);
+        setCheckoutStageId(stageId);
         setStage(null);
         setCart((current) => ({ ...current, lines: [], subtotal_minor: 0 }));
         await refreshCart();
@@ -764,6 +782,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const dismissCheckout = useCallback(() => {
     setCheckout(null);
+    setCheckoutStageId(null);
     setCheckoutError(null);
   }, []);
 
@@ -953,6 +972,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     browsingVariantId,
     setBrowsingVariantId,
     addToCart,
+    lastCartAddAt,
+    checkoutStageId,
     removeFromCart,
     updateQuantity,
     beginCheckout,
