@@ -384,14 +384,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // The approval queue and the headline snapshot both need an operator principal, so
   // they load once a session exists and are silent when the signed-in user is a
   // shopper — the portal is simply not their surface, which is not an error to show.
+  // Scoped to the open merchant chat: a decision belongs to the conversation it was
+  // made in, so switching to a new chat leaves it behind. Anything still pending is
+  // returned whichever chat is open — an unanswered proposal is outstanding work.
   const refreshChanges = useCallback(async () => {
     if (!session || isShopper) return;
     try {
-      setChanges(await api.changes());
+      setChanges(await api.changes(merchantId));
     } catch {
       /* a shopper gets 403 here; the portal page is what reports that */
     }
-  }, [session, isShopper]);
+  }, [session, isShopper, merchantId]);
 
   const refreshSnapshot = useCallback(async () => {
     if (!session || isShopper) return;

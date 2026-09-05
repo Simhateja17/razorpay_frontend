@@ -309,7 +309,13 @@ export const api = {
       `/portal/metrics?metric=${encodeURIComponent(metric)}&window_days=${windowDays}` +
         (groupBy ? `&group_by=${encodeURIComponent(groupBy)}` : "")
     ),
-  changes: () => req<MerchantChange[]>("/portal/changes"),
+  // Scoped to the open conversation: everything still pending comes back regardless,
+  // but a decided change is only returned for the chat it was staged in.
+  changes: (conversationId?: string) =>
+    req<MerchantChange[]>(
+      "/portal/changes" +
+        (conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : "")
+    ),
   // Approving is also the instruction to apply. The server re-reads the record and
   // re-checks the bounds first, so this can come back 409 with the reason — a stale
   // proposal or a bound that no longer holds. Nothing is written in that case.

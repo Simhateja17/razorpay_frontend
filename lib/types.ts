@@ -425,6 +425,9 @@ export interface MerchantApproval {
 
 export interface MerchantChange {
   id: string;
+  // The conversation the proposal was staged in. Null for anything staged outside
+  // one — a script or a scenario pack — which still belongs in the queue.
+  conversation_id: string | null;
   kind: MerchantChangeKind;
   target_type: string;
   target_id: string | null;
