@@ -40,8 +40,8 @@ export default function AgentComponent({ component }: { component: RenderedCompo
             className="grid gap-3"
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(196px, 1fr))" }}
           >
-            {items.map((card) => (
-              <PresentedCardView key={card.item_ref} card={card} />
+            {items.map((card, index) => (
+              <PresentedCardView key={card.item_ref} card={card} priority={index < 10} />
             ))}
           </div>
         </section>
@@ -55,14 +55,14 @@ export default function AgentComponent({ component }: { component: RenderedCompo
           {title && <h2 className="m-0 text-[13px] font-medium text-ink-muted">{title}</h2>}
           <div className="overflow-x-auto">
             <div className="flex gap-3 min-w-min">
-              {entries.map((entry) => (
+              {entries.map((entry, index) => (
                 <div key={entry.item_ref} className="w-[232px] flex-none flex flex-col gap-2">
                   {entry.variant_id === recommended_variant_id && (
                     <span className="self-start font-mono text-[9.5px] tracking-wide text-accent border border-accent/40 rounded px-1.5 py-0.5">
                       RECOMMENDED
                     </span>
                   )}
-                  <PresentedCardView card={entry} />
+                  <PresentedCardView card={entry} priority={index < 10} />
                   <dl className="m-0 flex flex-col gap-1.5 text-[11.5px] leading-relaxed">
                     {entry.pros.length > 0 && (
                       <div>
@@ -183,8 +183,8 @@ export default function AgentComponent({ component }: { component: RenderedCompo
               className="grid gap-3"
               style={{ gridTemplateColumns: "repeat(auto-fill, minmax(196px, 1fr))" }}
             >
-              {related.map((card) => (
-                <PresentedCardView key={card.item_ref ?? card.variant_id} card={card} />
+              {related.map((card, index) => (
+                <PresentedCardView key={card.item_ref ?? card.variant_id} card={card} priority={index < 10} />
               ))}
             </div>
           )}

@@ -17,6 +17,7 @@ import {
 } from "@/lib/types";
 import { api, ApiError } from "@/lib/api";
 import { uid } from "@/lib/format";
+import { preloadProductImages } from "@/lib/productImage";
 import { roleFromMetadata } from "@/lib/role-surface";
 import { supabase, supabaseConfigured } from "@/lib/supabase";
 import type { Session } from "@supabase/supabase-js";
@@ -578,6 +579,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
               break;
             }
 
+            // Still not rendered — see the note below — but a partial frame already
+            // names the products the agent settled on, which is the earliest moment
+            // their photos can start downloading. By the time the finished `ui`
+            // component mounts, the images are in cache and the card lands whole.
+            case "ui_partial":
+              preloadProductImages(event.data.payload);
+              break;
+
             case "cart_update":
               // The agent changed the cart; the panel is the same row, so it moves too.
               setCart((current) => ({
@@ -599,8 +608,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
               patch((m) => ({ ...m, typing: false }));
               break;
 
-            // `ui_partial` and `change_update` are not rendered by the storefront:
-            // a half-built card is worse than a card that appears when it is ready.
+            // `change_update` is not rendered by the storefront, and neither is the
+            // `ui_partial` handled above beyond warming its images: a half-built card
+            // is worse than a card that appears when it is ready.
             default:
               break;
           }

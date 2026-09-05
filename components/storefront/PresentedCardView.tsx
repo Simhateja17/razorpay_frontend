@@ -14,10 +14,12 @@ import { getVariantImageUrl } from "@/lib/productImage";
  * the card trustworthy (ADR 0020). A cross-sell is labelled as optional and is never
  * added on the customer's behalf (ADR 0007).
  */
-export default function PresentedCardView({ card }: { card: PresentedCard }) {
+export default function PresentedCardView({ card, priority = false }: { card: PresentedCard; priority?: boolean }) {
   const { addToCart } = useAppState();
   const [imageFailed, setImageFailed] = useState(false);
   const [adding, setAdding] = useState(false);
+  const imageUrl = getVariantImageUrl({ title: card.title });
+  const isLocal = imageUrl.startsWith("/");
 
   const handleAdd = async () => {
     if (adding || !card.in_stock) return;
@@ -44,13 +46,15 @@ export default function PresentedCardView({ card }: { card: PresentedCard }) {
           card.brand.toUpperCase()
         ) : (
           <Image
-            src={getVariantImageUrl({ title: card.title })}
+            src={imageUrl}
             alt={card.title}
             fill
             sizes="(max-width: 768px) 100vw, 196px"
-            unoptimized
+            unoptimized={!isLocal}
             className="object-cover"
-            loading="lazy"
+            loading={priority ? "eager" : "lazy"}
+            priority={priority}
+            fetchPriority={priority ? "high" : "auto"}
             onError={() => setImageFailed(true)}
           />
         )}
