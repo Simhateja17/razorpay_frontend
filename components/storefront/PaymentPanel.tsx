@@ -71,14 +71,15 @@ export function CheckoutStatusCard() {
 
   const pollOrder = checkout?.order;
   const orderId = pollOrder?.order_id;
+  const orderPaid = pollOrder?.paid;
+  const orderStatus = pollOrder?.status;
   // While a payment is outstanding, poll for the webhook-verified outcome instead of
   // waiting on the customer to click "I've paid — check the status". Razorpay confirms
   // asynchronously (ADR 0013), so this is the only way a failed or succeeded webhook
   // shows up here without a manual check. Stops the moment the order reaches a
   // terminal-for-the-panel state, and pauses while the tab is hidden.
   useEffect(() => {
-    if (!orderId || !pollOrder || pollOrder.paid || pollOrder.status === "cancelled" ||
-        pollOrder.status === "expired") {
+    if (!orderId || orderPaid || orderStatus === "cancelled" || orderStatus === "expired") {
       return;
     }
     const tick = () => {
@@ -86,7 +87,7 @@ export function CheckoutStatusCard() {
     };
     const id = window.setInterval(tick, 4000);
     return () => window.clearInterval(id);
-  }, [orderId, pollOrder?.status, pollOrder?.paid, refreshOrder]);
+  }, [orderId, orderStatus, orderPaid, refreshOrder]);
 
   if (!checkout) return null;
   const { order, payment } = checkout;

@@ -20,6 +20,22 @@ export default function AgentComponent({ component }: { component: RenderedCompo
       return (
         <section className="ml-9 flex flex-col gap-2">
           {title && <h2 className="m-0 text-[13px] font-medium text-ink-muted">{title}</h2>}
+          {component.payload.purpose === "setup" && (
+            <div className="rounded-xl border border-accent/30 bg-success-bg px-4 py-3">
+              <div className="flex items-baseline justify-between gap-4">
+                <span className="text-[13px] font-medium">Complete setup</span>
+                <span className="font-mono text-[16px] font-semibold">{component.payload.total}</span>
+              </div>
+              {component.payload.budget && (
+                <p className="m-0 mt-1 text-[12px] text-success-ink">
+                  {component.payload.remaining_budget_minor !== null && component.payload.remaining_budget_minor !== undefined && component.payload.remaining_budget_minor >= 0
+                    ? `${component.payload.remaining_budget} left from your ${component.payload.budget} budget`
+                    : `${formatMinor(Math.abs(component.payload.remaining_budget_minor ?? 0))} over your ${component.payload.budget} budget`}
+                </p>
+              )}
+              <p className="m-0 mt-1 text-[11px] text-ink-faint">Total calculated from the current catalog prices below.</p>
+            </div>
+          )}
           <div
             className="grid gap-3"
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(196px, 1fr))" }}

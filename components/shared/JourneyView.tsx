@@ -59,6 +59,36 @@ function summary(step: JourneyStep): string | null {
   return null;
 }
 
+type StoryStep = { label: string; detail: string; state: "done" | "waiting" | "problem" };
+
+function purchaseStory(steps: JourneyStep[]): StoryStep[] {
+  const story: StoryStep[] = [];
+  const turn = steps.find(step => step.source === "turn" && step.detail.user_message);
+  if (turn) story.push({ label: "You requested", detail: String(turn.detail.user_message), state: "done" });
+  const compatibility = steps.find(step => step.source === "tool" && step.label === "check_compatibility");
+  if (compatibility) story.push({
+    label: compatibility.outcome === "applied" ? "Compatibility checked" : "Compatibility check stopped",
+    detail: compatibility.outcome === "applied" ? "The selected products were checked against recorded compatibility rules." : "The check did not approve this combination.",
+    state: compatibility.outcome === "applied" ? "done" : "problem",
+  });
+  const confirmed = steps.find(step => step.source === "evidence" && step.label === "confirm_checkout" && step.outcome === "applied");
+  if (confirmed) story.push({ label: "You approved the total", detail: String(confirmed.detail.reason ?? "The reviewed checkout was confirmed."), state: "done" });
+  const attempt = [...steps].reverse().find(step => step.source === "payment_attempt");
+  if (attempt) {
+    const status = String(attempt.detail.status ?? "pending");
+    story.push({
+      label: status === "failed" ? "Payment needs another try" : status === "succeeded" ? "Payment received" : "Awaiting payment",
+      detail: status === "failed" ? String(attempt.detail.failure_reason ?? "The payment attempt failed without charging the order.") : "Razorpay test mode is handling this payment attempt.",
+      state: status === "failed" ? "problem" : status === "succeeded" ? "done" : "waiting",
+    });
+  }
+  const paid = steps.find(step => step.source === "order" && step.detail.status === "paid");
+  const verifying = steps.find(step => step.source === "order" && step.detail.status === "payment_verification_pending");
+  if (paid) story.push({ label: "Payment verified", detail: `Razorpay evidence matched this order and ${formatMinor(Number(paid.detail.amount_paid_minor ?? 0))} was verified.`, state: "done" });
+  else if (verifying) story.push({ label: "Verifying payment", detail: "The customer returned; Cartisan is waiting for verified Razorpay evidence.", state: "waiting" });
+  return story;
+}
+
 export default function JourneyView({ journey }: { journey: Journey | null }) {
   if (!journey) {
     return (
@@ -67,6 +97,7 @@ export default function JourneyView({ journey }: { journey: Journey | null }) {
       </div>
     );
   }
+  const story = purchaseStory(journey.steps);
   if (!journey.found) {
     return (
       <div className="text-[13px] text-ink-faint py-10 text-center">
@@ -92,7 +123,18 @@ export default function JourneyView({ journey }: { journey: Journey | null }) {
         </span>
       </div>
 
-      <ol className="flex flex-col gap-1.5 m-0 p-0 list-none">
+      {story.length > 0 && <ol aria-label="Purchase timeline" className="flex flex-col gap-2 m-0 p-0 list-none">
+        {story.map((step, index) => <li key={`${step.label}-${index}`} className="relative pl-8 pb-2">
+          {index < story.length - 1 && <span aria-hidden="true" className="absolute left-[10px] top-5 bottom-[-9px] w-px bg-border" />}
+          <span aria-hidden="true" className={`absolute left-0 top-0.5 w-[21px] h-[21px] rounded-full grid place-items-center text-[11px] ${step.state === "done" ? "bg-accent text-white" : step.state === "problem" ? "bg-danger text-white" : "bg-upsell-bg text-upsell-ink"}`}>{step.state === "done" ? "✓" : step.state === "problem" ? "!" : "…"}</span>
+          <h3 className="m-0 text-[13px] font-semibold">{step.label}</h3>
+          <p className="m-0 mt-0.5 text-[12.5px] text-ink-muted leading-relaxed">{step.detail}</p>
+        </li>)}
+      </ol>}
+
+      <details className="border-t border-border-soft pt-3">
+        <summary className="cursor-pointer text-[12px] font-medium text-ink-muted">Technical evidence · {journey.steps.length} records</summary>
+      <ol className="flex flex-col gap-1.5 mt-3 p-0 list-none">
         {journey.steps.map((step, index) => (
           <li
             key={`${step.source}-${index}`}
@@ -130,6 +172,7 @@ export default function JourneyView({ journey }: { journey: Journey | null }) {
           </li>
         ))}
       </ol>
+      </details>
     </div>
   );
 }

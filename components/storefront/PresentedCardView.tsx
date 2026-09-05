@@ -96,6 +96,11 @@ export default function PresentedCardView({ card }: { card: PresentedCard }) {
       {card.reason && (
         <span className="text-[11.5px] text-[#5d5d58] leading-relaxed">{card.reason}</span>
       )}
+      {card.fit_checks?.map((check) => (
+        <span key={check} className="text-[11px] text-success-ink leading-relaxed flex gap-1.5">
+          <span aria-hidden="true">✓</span>{check}
+        </span>
+      ))}
 
       {!card.in_stock ? (
         <span className="text-[11.5px] text-danger">Out of stock</span>

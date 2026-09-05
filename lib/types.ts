@@ -226,6 +226,7 @@ export interface PresentedCard {
   options: Record<string, string>;
   specifications: Record<string, string>;
   reason?: string;
+  fit_checks?: string[];
   is_cross_sell?: boolean;
 }
 
@@ -233,6 +234,13 @@ export interface ProductsPayload {
   presentation_id: string;
   title: string;
   layout?: string;
+  purpose?: "shortlist" | "setup";
+  budget_minor?: number | null;
+  budget?: string | null;
+  total_minor?: number;
+  total?: string;
+  remaining_budget_minor?: number | null;
+  remaining_budget?: string | null;
   items: PresentedCard[];
 }
 

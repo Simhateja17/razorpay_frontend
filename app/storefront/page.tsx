@@ -36,11 +36,19 @@ export default function StorefrontPage() {
 
   // Adding a line slides the cart in — the confirmation that the add landed. It is
   // driven by the explicit-add signal, so browsing or an agent turn never opens it.
-  useEffect(() => { if (lastCartAddAt) setCartOpen(true); }, [lastCartAddAt]);
+  useEffect(() => {
+    if (!lastCartAddAt) return;
+    const frame = requestAnimationFrame(() => setCartOpen(true));
+    return () => cancelAnimationFrame(frame);
+  }, [lastCartAddAt]);
 
   // A staged checkout or a live payment is the assistant talking — surface it even if the
   // shopper never opened the panel themselves.
-  useEffect(() => { if (stage || checkout) setChatOpen(true); }, [stage, checkout]);
+  useEffect(() => {
+    if (!stage && !checkout) return;
+    const frame = requestAnimationFrame(() => setChatOpen(true));
+    return () => cancelAnimationFrame(frame);
+  }, [stage, checkout]);
 
   // Escape closes the conversation without losing it; reopening shows the same transcript.
   useEffect(() => {

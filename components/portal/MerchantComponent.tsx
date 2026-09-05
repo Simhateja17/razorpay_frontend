@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { RenderedComponent, Claim, ClaimKind, MetricsPayload } from "@/lib/types";
+import { RenderedComponent, ClaimKind, MetricsPayload } from "@/lib/types";
 import { formatMinor } from "@/lib/format";
 import { useAppState } from "@/lib/store/AppState";
 

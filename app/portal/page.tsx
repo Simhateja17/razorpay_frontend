@@ -15,6 +15,7 @@ import RoleGate from "@/components/shared/RoleGate";
 const SUGGESTED_PROMPTS = [
   "How are sales looking this week?",
   "Anything I should restock?",
+  "What are shoppers unable to find?",
   "How is the Monsoon Audio Push campaign doing?",
 ];
 
@@ -33,6 +34,7 @@ const CAPABILITY_EXAMPLES = [
   "Show me our top-selling audio listings",
   "Show me the listing for the Wireless Earbuds",
   "Anything I should restock?",
+  "What are shoppers unable to find?",
   "Any order issues I should know about?",
   "What's the pricing headroom on this listing?",
   "What changes are pending approval?",
