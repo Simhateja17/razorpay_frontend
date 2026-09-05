@@ -265,12 +265,12 @@ function StagePreview({
           disabled={payload.state !== "staged" || confirmingCheckout}
           className="w-full bg-accent text-white border-none rounded-lg py-3 text-[14px] font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
         >
-          {confirmingCheckout ? "Confirming…" : `Pay ${payload.total} via Razorpay`}
+          {confirmingCheckout ? "Opening Razorpay…" : `Pay ${payload.total} via Razorpay`}
         </button>
         {checkoutError && <span className="text-[12px] text-danger">{checkoutError}</span>}
         <span className="text-[11px] text-ink-faint text-center leading-relaxed">
-          Confirming places the order and holds your items. Nothing is charged until you
-          pay on Razorpay.
+          You’ll go straight to Razorpay. Your order is created and your items are held
+          while you pay.
         </span>
       </div>
     </section>

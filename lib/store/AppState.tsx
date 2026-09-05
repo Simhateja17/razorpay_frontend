@@ -779,6 +779,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const confirmAndPay = useCallback(
     async (stageId: string) => {
       if (!session || confirmingCheckoutRef.current) return;
+      // Reserve the Razorpay tab while this click still has a browser user gesture.
+      // Opening it only after the API request resolves is commonly blocked as a
+      // popup. If the browser blocks new tabs, fall back to navigating this tab.
+      const paymentWindow = window.open("about:blank", "_blank");
+      if (paymentWindow) paymentWindow.opener = null;
       confirmingCheckoutRef.current = true;
       setConfirmingCheckout(true);
       setCheckoutError(null);
@@ -791,10 +796,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         await refreshCart();
         setBackendError(null);
         if (confirmed.payment.pay_url) {
-          window.open(confirmed.payment.pay_url, "_blank", "noopener,noreferrer");
+          if (paymentWindow) paymentWindow.location.replace(confirmed.payment.pay_url);
+          else window.location.assign(confirmed.payment.pay_url);
           await paymentReturned(confirmed.order.order_id);
+        } else {
+          paymentWindow?.close();
         }
       } catch (e) {
+        paymentWindow?.close();
         setCheckoutError(errorMessage(e));
         await refreshCart();
       } finally {
