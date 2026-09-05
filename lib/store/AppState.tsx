@@ -414,12 +414,27 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
   }, [session, isShopper]);
 
+  // A checkout with nothing left to do — paid, cancelled, or expired — is a receipt,
+  // not something that still needs the customer's attention. Leaving it on screen
+  // is a courtesy that stops being one the moment the customer moves to a
+  // different conversation; a checkout still holding stock or waiting on Razorpay
+  // keeps following them, because that one is still real and still theirs to act on.
+  const clearResolvedCheckout = useCallback(() => {
+    setCheckout((current) => {
+      if (!current) return current;
+      const { status, paid } = current.order;
+      const resolved = paid || status === "cancelled" || status === "expired";
+      return resolved ? null : current;
+    });
+  }, []);
+
   const startNewShopperChat = useCallback(() => {
     if (turnActive) return;
     setShopperId(newConversationId("cartisan_shopper"));
     setStoreMessages([]);
     setBackendError(null);
-  }, [turnActive]);
+    clearResolvedCheckout();
+  }, [turnActive, clearResolvedCheckout]);
 
   const selectShopperChat = useCallback(
     (conversationIdToSelect: string) => {
@@ -434,8 +449,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
       setStoreMessages([]);
       setBackendError(null);
+      clearResolvedCheckout();
     },
-    [chatHistory, shopperId, turnActive]
+    [chatHistory, shopperId, turnActive, clearResolvedCheckout]
   );
 
   const startNewMerchantChat = useCallback(() => {
