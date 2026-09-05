@@ -27,6 +27,7 @@ export default function PresentedCardView({ card }: { card: PresentedCard }) {
   };
 
   const options = Object.entries(card.options ?? {});
+  const specs = Object.entries(card.specifications ?? {});
 
   return (
     <div
@@ -80,6 +81,17 @@ export default function PresentedCardView({ card }: { card: PresentedCard }) {
       )}
 
       <span className="font-mono text-[14.5px] font-medium">{card.price}</span>
+
+      {specs.length > 0 && (
+        <ul className="m-0 p-0 list-none flex flex-col gap-0.5">
+          {specs.map(([key, value]) => (
+            <li key={key} className="flex justify-between gap-2 text-[11px] text-ink-muted">
+              <span className="capitalize">{key.replace(/_/g, " ")}</span>
+              <span className="text-ink">{value}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {card.reason && (
         <span className="text-[11.5px] text-[#5d5d58] leading-relaxed">{card.reason}</span>

@@ -10,28 +10,35 @@ import PaymentPanel from "@/components/storefront/PaymentPanel";
 import ConversationSwitcher from "@/components/storefront/ConversationSwitcher";
 import RoleGate from "@/components/shared/RoleGate";
 
+// The catalog is consumer electronics and smart-lifestyle accessories only — no
+// laptops or phones are sold here (backend/marketplace_backend/seed/domain.py:49-59,
+// 70-330). Phones and laptops appear only as compatibility targets for cases and
+// chargers, so every example below names a real category or line from that catalog.
 const SUGGESTED_PROMPTS = [
-  "I need a laptop and a charger that can actually drive it",
+  "Find me wireless earbuds under ₹5,000",
   "Compare the chargers you have under ₹3,000",
   "What's in my cart?",
 ];
 
 // One example per thing the shopping agent can actually do — search, compare, cart,
 // preferences, orders, policies, shipping, checkout — cycled in the input as a live
-// demonstration of scope, not just a static hint.
+// demonstration of scope, not just a static hint. Every product and category named
+// here is real (Personal Audio, Home Audio, Power & Cables, Wearables, Smart Home,
+// Computing, Home Comfort, Cases & Protection); nothing implies the store sells
+// laptops or phones, since it doesn't.
 const CAPABILITY_EXAMPLES = [
-  "Find me a laptop under ₹60,000",
+  "Find me wireless earbuds under ₹5,000",
   "Compare the chargers you have under ₹3,000",
-  "Tell me more about the Noise Buds",
-  "Add 2 of the wireless mouse to my cart",
+  "Tell me more about the Over-Ear Headphones",
+  "Add the mechanical keyboard to my cart",
   "What's in my cart?",
-  "Remove the charger from my cart",
-  "Remember I prefer wired earphones over wireless",
+  "Remove the power bank from my cart",
+  "Remember I prefer wired over wireless",
   "Where's my last order?",
   "Show my order history",
   "What's your return policy?",
   "How fast can this ship to Mumbai?",
-  "Help me pick a laptop for video editing",
+  "Help me put together a smart home starter kit",
   "Checkout with my saved card",
   "What can you help me with?",
 ];

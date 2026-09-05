@@ -215,6 +215,7 @@ export interface PresentedCard {
   currency: string;
   in_stock: boolean;
   options: Record<string, string>;
+  specifications: Record<string, string>;
   reason?: string;
   is_cross_sell?: boolean;
 }

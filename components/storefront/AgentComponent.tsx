@@ -190,7 +190,7 @@ function StagePreview({
 }: {
   payload: Extract<RenderedComponent, { kind: "checkout" }>["payload"];
 }) {
-  const { confirmCheckout, checkoutError, checkout } = useAppState();
+  const { confirmAndPay, checkoutError, checkout } = useAppState();
   const alreadyConfirmed = checkout?.order.status !== undefined;
 
   return (
@@ -239,11 +239,11 @@ function StagePreview({
       </div>
       <div className="px-4 pb-4 flex flex-col gap-2">
         <button
-          onClick={() => confirmCheckout(payload.stage_id)}
+          onClick={() => confirmAndPay(payload.stage_id)}
           disabled={payload.state !== "staged" || alreadyConfirmed}
           className="w-full bg-accent text-white border-none rounded-lg py-3 text-[14px] font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
         >
-          Confirm and continue to payment
+          Pay {payload.total} via Razorpay
         </button>
         {checkoutError && <span className="text-[12px] text-danger">{checkoutError}</span>}
         <span className="text-[11px] text-ink-faint text-center leading-relaxed">

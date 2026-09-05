@@ -94,6 +94,7 @@ interface AppState {
   updateQuantity: (variantId: string, quantity: number) => Promise<void>;
   beginCheckout: () => Promise<void>;
   confirmCheckout: (stageId: string) => Promise<void>;
+  confirmAndPay: (stageId: string) => Promise<void>;
   cancelStage: () => void;
   retryPayment: (orderId: string) => Promise<void>;
   refreshOrder: (orderId: string) => Promise<OrderApi | undefined>;
@@ -707,6 +708,41 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [session, guarded]
   );
 
+  /**
+   * One tap that does both the customer's confirm (ADR 0012) and the Razorpay
+   * handoff: confirm still runs first and still creates the order and reserves
+   * stock, this just opens the resulting pay_url immediately instead of making
+   * the customer read a second screen and click again.
+   */
+  const confirmAndPay = useCallback(
+    async (stageId: string) => {
+      if (!session || confirmingCheckoutRef.current) return;
+      confirmingCheckoutRef.current = true;
+      setConfirmingCheckout(true);
+      setCheckoutError(null);
+      try {
+        const confirmed = await api.confirmCheckout(stageId);
+        setCheckout(confirmed);
+        setStage(null);
+        setCart((current) => ({ ...current, lines: [], subtotal_minor: 0 }));
+        await refreshCart();
+        setBackendError(null);
+        if (confirmed.payment.pay_url) {
+          window.open(confirmed.payment.pay_url, "_blank", "noopener,noreferrer");
+          await paymentReturned(confirmed.order.order_id);
+        }
+      } catch (e) {
+        setCheckoutError(errorMessage(e));
+        await refreshCart();
+      } finally {
+        confirmingCheckoutRef.current = false;
+        setConfirmingCheckout(false);
+      }
+      refreshEvidence();
+    },
+    [session, refreshCart, refreshEvidence, paymentReturned]
+  );
+
   const dismissCheckout = useCallback(() => {
     setCheckout(null);
     setCheckoutError(null);
@@ -900,6 +936,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     updateQuantity,
     beginCheckout,
     confirmCheckout,
+    confirmAndPay,
     cancelStage,
     retryPayment,
     refreshOrder,
