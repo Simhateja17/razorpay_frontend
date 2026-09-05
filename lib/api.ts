@@ -357,11 +357,12 @@ export const api = {
     })}`),
   evidenceFilters: (demoRunId?: string) =>
     req<EvidenceFilters>(`/portal/evidence/filters${query({ demo_run_id: demoRunId })}`),
-  journeys: (params: { actorId?: string; demoRunId?: string; origin?: DataOrigin; limit?: number } = {}) =>
+  journeys: (params: { actorId?: string; demoRunId?: string; origin?: DataOrigin; surface?: string; limit?: number } = {}) =>
     req<JourneySummary[]>(`/portal/evidence/journeys${query({
       actor_id: params.actorId,
       demo_run_id: params.demoRunId,
       origin: params.origin,
+      surface: params.surface,
       limit: params.limit,
     })}`),
   journey: (correlationId: string) =>

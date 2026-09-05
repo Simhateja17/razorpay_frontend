@@ -85,11 +85,13 @@ function OperatorEvidencePage() {
           demoRunId: demoRun || undefined,
           outcome: outcome === "all" ? undefined : outcome,
           origin: origin || undefined,
+          surface: "merchant",
           limit: 200,
         }),
         api.journeys({
           demoRunId: demoRun || undefined,
           origin: origin || undefined,
+          surface: "merchant",
           limit: 80,
         }),
       ]);
@@ -130,9 +132,9 @@ function OperatorEvidencePage() {
       <div className="flex-none px-6 pt-6 pb-4 flex flex-col gap-1">
         <h1 className="text-[20px] font-semibold tracking-tight">Evidence</h1>
         <p className="m-0 text-[13.5px] text-ink-muted leading-relaxed max-w-[76ch]">
-          The store&apos;s explainable audit trail: every meaningful agent and commerce
-          operation, including refusals, connected into journeys from the original request
-          through Cartisan and Razorpay test-mode evidence.
+          The merchant&apos;s explainable audit trail: operator and merchant-agent operations,
+          including refusals, connected into complete merchant journeys. Customer shopping
+          and checkout journeys remain in each customer&apos;s own Evidence view.
         </p>
       </div>
 
