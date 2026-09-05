@@ -64,6 +64,18 @@ export default function StorefrontPage() {
 
   const ask = (text: string) => { setChatOpen(true); void sendShopperMessage(text); };
   const cartCount = cart.lines.reduce((n, l) => n + l.quantity, 0);
+  const openOrder = checkout && !checkout.order.paid && !["cancelled", "expired", "refunded"].includes(checkout.order.status)
+    ? checkout.order : null;
+  const lastAttempt = openOrder?.attempts[openOrder.attempts.length - 1];
+  const recoveryTitle = lastAttempt?.status === "failed"
+    ? "Payment didn’t go through"
+    : openOrder?.status === "payment_verification_pending"
+      ? "We’re verifying your payment"
+      : "Your order is waiting for you";
+  const showRecovery = () => {
+    setChatOpen(true);
+    requestAnimationFrame(() => document.getElementById("active-checkout")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  };
 
   return <RoleGate role="customer">
     <div className="h-full flex min-w-0 relative">
@@ -112,7 +124,19 @@ export default function StorefrontPage() {
       {chatOpen && (
         <div role="dialog" aria-modal="true" aria-label="Shopping assistant" className="absolute inset-0 z-30 flex flex-col bg-bg">
           <div className="flex-none flex items-center justify-between gap-2 px-4 py-3 border-b border-border bg-white">
-            <span className="text-sm font-semibold">✦ Shopping assistant</span>
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-sm font-semibold whitespace-nowrap">✦ Shopping assistant</span>
+              {openOrder && (
+                <button onClick={showRecovery} className="group min-w-0 flex items-center gap-2 rounded-full border border-upsell-border bg-upsell-bg px-3 py-1.5 text-left hover:border-accent transition-colors">
+                  <span aria-hidden="true" className={`h-2 w-2 flex-none rounded-full ${lastAttempt?.status === "failed" ? "bg-danger" : "bg-upsell-ink animate-pulse"}`} />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[11.5px] font-semibold text-ink">{recoveryTitle}</span>
+                    <span className="block truncate text-[10px] text-ink-muted">{openOrder.order_id} · {openOrder.lines.length} {openOrder.lines.length === 1 ? "item" : "items"} · {lastAttempt?.status === "failed" ? "Retry the same order" : "Finish when you’re ready"}</span>
+                  </span>
+                  <span aria-hidden="true" className="text-accent text-xs group-hover:translate-x-0.5 transition-transform">→</span>
+                </button>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <ConversationSwitcher conversations={chatHistory} activeConversationId={shopperConversationId} turnActive={turnActive}
                 onNewChat={startNewShopperChat} onSelectChat={selectShopperChat} />

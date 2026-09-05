@@ -100,7 +100,7 @@ export function CheckoutStatusCard() {
 
   if (order.paid) {
     return (
-      <section className="ml-9 max-w-[430px] bg-success-bg border border-success-border rounded-xl p-4 flex flex-col gap-2">
+      <section id="active-checkout" className="ml-9 max-w-[430px] bg-success-bg border border-success-border rounded-xl p-4 flex flex-col gap-2">
         <div className="flex items-center gap-2.5">
           <span className="w-[22px] h-[22px] rounded-md bg-accent text-white flex items-center justify-center text-[12px]">
             ✓
@@ -136,7 +136,7 @@ export function CheckoutStatusCard() {
 
   if (terminal) {
     return (
-      <section className="ml-9 max-w-[470px] bg-danger-bg border border-danger-border rounded-xl p-4 flex flex-col gap-2">
+      <section id="active-checkout" className="ml-9 max-w-[470px] bg-danger-bg border border-danger-border rounded-xl p-4 flex flex-col gap-2">
         <div className="flex items-center gap-2.5">
           <span className="w-[22px] h-[22px] rounded-md bg-danger text-white flex items-center justify-center text-[13px] font-semibold">
             !
@@ -155,7 +155,7 @@ export function CheckoutStatusCard() {
   }
 
   return (
-    <section className="ml-9 max-w-[430px] bg-white border border-[#cfd9d5] rounded-xl overflow-hidden shadow-sm">
+    <section id="active-checkout" className="ml-9 max-w-[430px] bg-white border border-[#cfd9d5] rounded-xl overflow-hidden shadow-sm">
       <div className="px-4 pt-4 pb-3 flex flex-col gap-2.5">
         <div className="flex justify-between items-baseline">
           <span className="font-mono text-[10px] text-ink-faint tracking-wide">
