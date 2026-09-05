@@ -566,23 +566,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
               break;
 
             case "ui": {
+              // Held in `pendingComponents`, not shown yet: a card grid landing next to
+              // a sentence that is still mid-type reads as the images "jumping ahead" of
+              // the text. It is released in one piece on `turn_complete` below, by which
+              // point its photos are already warm from the `ui_partial` preload.
               const component = asComponent(
                 SHOPPING_COMPONENTS, event.data.component, event.data.payload
               );
               if (component) {
                 patch((m) => ({
                   ...m,
-                  typing: false,
-                  components: [...(m.components ?? []), component],
+                  pendingComponents: [...(m.pendingComponents ?? []), component],
                 }));
               }
               break;
             }
 
-            // Still not rendered — see the note below — but a partial frame already
-            // names the products the agent settled on, which is the earliest moment
-            // their photos can start downloading. By the time the finished `ui`
-            // component mounts, the images are in cache and the card lands whole.
+            // Not rendered — a partial frame already names the products the agent
+            // settled on, which is the earliest moment their photos can start
+            // downloading. By the time `turn_complete` releases the finished `ui`
+            // component, the images are in cache and the card lands whole.
             case "ui_partial":
               preloadProductImages(event.data.payload);
               break;
@@ -601,11 +604,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
               break;
 
             case "error":
-              patch((m) => ({ ...m, typing: false, error: event.data.message }));
+              // The turn is cut short; release whatever was already staged rather than
+              // silently dropping it.
+              patch((m) => ({
+                ...m,
+                typing: false,
+                error: event.data.message,
+                components: [...(m.components ?? []), ...(m.pendingComponents ?? [])],
+                pendingComponents: [],
+              }));
               break;
 
             case "turn_complete":
-              patch((m) => ({ ...m, typing: false }));
+              patch((m) => ({
+                ...m,
+                typing: false,
+                components: [...(m.components ?? []), ...(m.pendingComponents ?? [])],
+                pendingComponents: [],
+              }));
               break;
 
             // `change_update` is not rendered by the storefront, and neither is the

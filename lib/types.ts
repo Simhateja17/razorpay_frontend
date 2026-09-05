@@ -662,8 +662,11 @@ export interface ChatMessage {
   text: string;
   typing?: boolean;
   why?: string;
-  // What the agent rendered this turn, in the order it rendered it.
+  // What the agent rendered this turn, in the order it rendered it. Held back in
+  // `pendingComponents` until the turn's text has finished streaming, so a card grid
+  // never pops in above or beside a sentence that is still being typed out.
   components?: RenderedComponent[];
+  pendingComponents?: RenderedComponent[];
   tools?: ToolTrace[];
   error?: string;
 }

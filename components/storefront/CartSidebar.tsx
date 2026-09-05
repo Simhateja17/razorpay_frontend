@@ -18,7 +18,7 @@ export default function CartSidebar() {
 
   return (
     <aside className="w-[300px] flex-none bg-white border-l border-border flex flex-col">
-      <div className="px-4 pt-3.5 pb-3 border-b border-border-soft flex justify-between items-baseline">
+      <div className="pl-4 pr-11 pt-3.5 pb-3 border-b border-border-soft flex justify-between items-baseline">
         <span className="text-[13.5px] font-semibold">Your cart</span>
         <span className="font-mono text-[11px] text-ink-faint whitespace-nowrap">
           {cart.lines.length} {cart.lines.length === 1 ? "item" : "items"}
