@@ -16,7 +16,13 @@ const OPERATOR_TABS: readonly SurfaceTab[] = [
   { href: "/operations", label: "Operations" },
 ];
 
-const PUBLIC_TABS: readonly SurfaceTab[] = [...CUSTOMER_TABS, ...OPERATOR_TABS];
+/**
+ * Signed-out visitors see every surface's entry point. Both role sets link to
+ * /evidence, so the union is deduplicated by href — otherwise the tab renders twice.
+ */
+const PUBLIC_TABS: readonly SurfaceTab[] = [...CUSTOMER_TABS, ...OPERATOR_TABS].filter(
+  (tab, index, tabs) => tabs.findIndex((other) => other.href === tab.href) === index,
+);
 
 /**
  * The role is read from Supabase app metadata by the authenticated client and
