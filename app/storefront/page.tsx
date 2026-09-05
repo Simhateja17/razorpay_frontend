@@ -187,9 +187,10 @@ export default function StorefrontPage() {
         </div>
       )}
 
-      {/* Always a drawer over the page — the same panel the shopper sees slide in on an add. */}
+      {/* A real column, not an overlay: the page (and the assistant panel inside it) shrinks
+          to make room, so the chat header controls stay reachable while the cart is open. */}
       {cartOpen && (
-        <div className="slide-in-right absolute inset-y-0 right-0 z-40 flex max-w-full shadow-[-8px_0_28px_#00000014]">
+        <div className="slide-in-right relative flex-none z-40 flex max-w-full shadow-[-8px_0_28px_#00000014]">
           <button aria-label="Close cart" onClick={() => setCartOpen(false)}
             className="absolute right-3 top-3 z-10 rounded-md border border-border bg-white px-2 py-0.5 text-ink-muted hover:text-ink">×</button>
           <CartSidebar />
