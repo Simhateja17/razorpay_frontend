@@ -71,8 +71,11 @@ export default function StorefrontPage() {
   const recoveryTitle = lastAttempt?.status === "failed"
     ? "Payment didn’t go through"
     : openOrder?.status === "payment_verification_pending"
-      ? "We’re verifying your payment"
-      : "Your order is waiting for you";
+      ? "Your payment is still pending"
+      : "Your cart is saved";
+  const recoveryAction = lastAttempt?.status === "failed"
+    ? "Retry the same order"
+    : `Complete checkout to secure your ${openOrder?.lines.length === 1 ? "item" : "items"}`;
   const showRecovery = () => {
     setChatOpen(true);
     const visibleCheckout = document.getElementById("active-checkout");
@@ -146,7 +149,7 @@ export default function StorefrontPage() {
                   <span aria-hidden="true" className={`h-2 w-2 flex-none rounded-full ${lastAttempt?.status === "failed" ? "bg-danger" : "bg-upsell-ink animate-pulse"}`} />
                   <span className="min-w-0">
                     <span className="block truncate text-[11.5px] font-semibold text-ink">{recoveryTitle}</span>
-                    <span className="block truncate text-[10px] text-ink-muted">{openOrder.order_id} · {openOrder.lines.length} {openOrder.lines.length === 1 ? "item" : "items"} · {lastAttempt?.status === "failed" ? "Retry the same order" : "Finish when you’re ready"}</span>
+                    <span className="block truncate text-[10px] text-ink-muted">{openOrder.order_id} · {openOrder.lines.length} {openOrder.lines.length === 1 ? "item" : "items"} · {recoveryAction}</span>
                   </span>
                   <span aria-hidden="true" className="text-accent text-xs group-hover:translate-x-0.5 transition-transform">→</span>
                 </button>
